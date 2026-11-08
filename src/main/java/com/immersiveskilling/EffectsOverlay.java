@@ -92,6 +92,7 @@ class EffectsOverlay extends Overlay
 	private final Particles particles = new Particles(7);
 	private final List<Pop> pops = new ArrayList<>();
 	private int plane;
+	private int view = -1;
 	private long lastNanos;
 
 	@Inject
@@ -109,8 +110,17 @@ class EffectsOverlay extends Overlay
 		return particles;
 	}
 
-	void setPlane(int plane)
+	/**
+	 * WHAT: Sets the worldview and plane particles and pops are drawn on.
+	 * WHY: On a Sailing boat your position is on the boat's own worldview, not the main world.
+	 * PRE: view is a WorldView id (-1 is the main world).
+	 * POST: Effects are drawn in that worldview from the next frame.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void setView(int view, int plane)
 	{
+		this.view = view;
 		this.plane = plane;
 	}
 
@@ -164,7 +174,7 @@ class EffectsOverlay extends Overlay
 
 	private Point project(double x, double y, double z)
 	{
-		LocalPoint lp = new LocalPoint((int) x, (int) y, client.getTopLevelWorldView());
+		LocalPoint lp = new LocalPoint((int) x, (int) y, view);
 		return Perspective.localToCanvas(client, lp, plane, (int) z);
 	}
 

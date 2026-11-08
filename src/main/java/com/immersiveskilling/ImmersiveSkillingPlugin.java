@@ -27,6 +27,7 @@ package com.immersiveskilling;
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -97,6 +98,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	/** Ambient sparks and chips keep going this long (seconds) after the last item. */
 	static final double AMBIENT_SECONDS = 6;
 	private static final int TILE = 128;
+	/** Skills whose items can go straight into a log basket, fish barrel or bag. */
+	private static final List<Skill> BAG_SKILLS = Arrays.asList(Skill.WOODCUTTING, Skill.FISHING, Skill.MINING);
 
 	@Inject
 	private Client client;
@@ -122,12 +125,18 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private final Map<Skill, Integer> lastXp = new EnumMap<>(Skill.class);
 	private final Map<Skill, Integer> xpTick = new EnumMap<>(Skill.class);
 	private final List<Gain> pending = new ArrayList<>();
+	// The XP drop each skill's last item was matched to, and the last one checked for a bag.
+	private final Map<Skill, Integer> matchedXp = new EnumMap<>(Skill.class);
+	private final Map<Skill, Integer> checkedXp = new EnumMap<>(Skill.class);
+	// The last item each gathering skill gave you, for when the next one goes into a bag instead.
+	private final Map<Skill, Integer> lastItem = new EnumMap<>(Skill.class);
 
 	// The current pile (or basket) beside you.
 	private Activity pileActivity;
 	private double pileX;
 	private double pileY;
 	private int pilePlane;
+	private int pileView = -1;
 	private int pileCount;
 
 	// The last activity, for ambient effects while you keep working.
@@ -139,6 +148,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 
 	private volatile boolean paused;
 	private volatile String status = "";
+	private volatile String hint = "";
 	private volatile int statusCount;
 	private volatile int statusCap;
 
@@ -184,6 +194,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 			clientToolbar.addNavigation(navButton);
 		}
 		resetState();
+		lastItem.clear();
+		lastItem.put(Skill.WOODCUTTING, config.lastWoodcutting());
+		lastItem.put(Skill.FISHING, config.lastFishing());
+		lastItem.put(Skill.MINING, config.lastMining());
 	}
 
 	@Override
@@ -212,10 +226,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 		lastXp.clear();
 		xpTick.clear();
 		pending.clear();
+		matchedXp.clear();
+		checkedXp.clear();
 		pileActivity = null;
 		pileCount = 0;
 		lastActivity = null;
 		status = "";
+		hint = "";
 		statusCount = 0;
 		statusCap = 0;
 	}
@@ -232,6 +249,12 @@ public class ImmersiveSkillingPlugin extends Plugin
 		}
 		// Logging out, hopping or loading a new area: local positions are no longer valid.
 		clearAll();
+		if (state == GameState.LOADING)
+		{
+			// Only the area changed, not your XP or inventory. Forgetting them here made the first
+			// item after every map load (crossing a region, sailing on) play nothing.
+			return;
+		}
 		resetState();
 	}
 
@@ -292,19 +315,59 @@ public class ImmersiveSkillingPlugin extends Plugin
 		{
 			return;
 		}
-		WorldView wv = client.getTopLevelWorldView();
-		overlay.setPlane(wv.getPlane());
+		WorldView wv = viewOf(player);
+		overlay.setView(wv.getId(), wv.getPlane());
 		LocalPoint at = player.getLocalLocation();
 		if (pileActivity != null)
 		{
 			double dist = Math.hypot(at.getX() - pileX, at.getY() - pileY) / TILE;
 			boolean walkedAway = config.clearWhen() == ImmersiveSkillingConfig.ClearWhen.WALK_AWAY && dist > WALK_AWAY_TILES;
-			if (walkedAway || dist > FAR_TILES || wv.getPlane() != pilePlane)
+			if (walkedAway || dist > FAR_TILES || wv.getPlane() != pilePlane || wv.getId() != pileView)
 			{
 				clearPile();
 			}
 		}
 		ambient(player, tick);
+		bagFallback(player, tick);
+	}
+
+	/**
+	 * WHAT: Plays the last item again when a gathering skill gave XP but nothing arrived.
+	 * WHY: With a log basket, fish barrel or bag open, the item goes straight in, so there's no
+	 * inventory change to match. Without this those players saw no effects at all.
+	 * PRE: Client thread; called every tick, after the item for an XP drop would have arrived.
+	 * POST: May play one effect per gathering skill.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void bagFallback(Player player, int tick)
+	{
+		for (Skill skill : BAG_SKILLS)
+		{
+			Integer xp = xpTick.get(skill);
+			if (xp == null || tick - xp <= MATCH_TICKS || xp.equals(checkedXp.get(skill)))
+			{
+				continue;
+			}
+			checkedXp.put(skill, xp);
+			Integer itemId = lastItem.get(skill);
+			if (xp.equals(matchedXp.get(skill)) || player.getAnimation() == -1)
+			{
+				continue;
+			}
+			if (itemId == null || itemId <= 0)
+			{
+				// Nothing to replay yet: say why in the panel rather than showing nothing at all.
+				if (carriesBag(skill))
+				{
+					setHint(bagHint(skill));
+				}
+				continue;
+			}
+			Activity activity = skill == Skill.WOODCUTTING ? Activity.WOODCUTTING
+				: skill == Skill.FISHING ? Activity.FISHING : Activity.MINING;
+			play(activity, itemId, client.getItemDefinition(itemId).getName(), Collections.emptyList(), null);
+		}
 	}
 
 	@Subscribe
@@ -396,8 +459,46 @@ public class ImmersiveSkillingPlugin extends Plugin
 				continue;
 			}
 			it.remove();
+			matchedXp.put(skill, xpTick.get(skill));
+			if (BAG_SKILLS.contains(skill))
+			{
+				rememberItem(skill, gain.itemId);
+			}
 			play(activity, gain.itemId, name, gain.lost, activity == Activity.SMELTING ? furnace : anvil);
 		}
+	}
+
+	/**
+	 * WHAT: Remembers the last item a gathering skill gave you, in the settings.
+	 * WHY: So a basket or barrel gets effects even right after logging in.
+	 * PRE: Client thread.
+	 * POST: The item is saved when it changed.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void rememberItem(Skill skill, int itemId)
+	{
+		Integer before = lastItem.put(skill, itemId);
+		if (before == null || before != itemId)
+		{
+			String key = skill == Skill.WOODCUTTING ? "lastWoodcutting" : skill == Skill.FISHING ? "lastFishing" : "lastMining";
+			configManager.setConfiguration(ImmersiveSkillingConfig.GROUP, key, itemId);
+		}
+	}
+
+	/**
+	 * WHAT: The worldview you're standing in: a Sailing boat's deck, or the main world.
+	 * WHY: On a boat your local position is on the boat's own worldview; props and effects
+	 * placed in the main world showed up in the wrong spot or not at all.
+	 * PRE: Client thread. player may be null.
+	 * POST: Nothing changes.
+	 * RETURN: the worldview, never null while logged in
+	 * THROWS: Nothing.
+	 */
+	private WorldView viewOf(Player player)
+	{
+		WorldView wv = player == null ? null : player.getWorldView();
+		return wv != null ? wv : client.getTopLevelWorldView();
 	}
 
 	private Skill skillNear(int tick)
@@ -450,7 +551,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private LocalPoint findObject(String word)
 	{
 		Player player = client.getLocalPlayer();
-		WorldView wv = client.getTopLevelWorldView();
+		WorldView wv = viewOf(player);
 		if (player == null || wv == null || player.getLocalLocation() == null)
 		{
 			return null;
@@ -518,9 +619,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 		{
 			return;
 		}
-		WorldView wv = client.getTopLevelWorldView();
+		WorldView wv = viewOf(player);
 		int plane = wv.getPlane();
-		overlay.setPlane(plane);
+		overlay.setView(wv.getId(), plane);
+		props.setView(wv.getId());
 		LocalPoint at = player.getLocalLocation();
 		double angle = player.getCurrentOrientation() * Math.PI * 2 / 2048;
 		double fx = -Math.sin(angle);
@@ -531,6 +633,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 		double amount = config.amount().getScale();
 		Particles particles = overlay.getParticles();
 
+		setHint("");
 		lastActivity = activity;
 		lastActivityTime = now;
 		targetX = station != null ? station.getX() : tx;
@@ -594,13 +697,14 @@ public class ImmersiveSkillingPlugin extends Plugin
 		double fromX, double fromY, double fromZ, double peak, double now)
 	{
 		int cap = config.pileSize().getCount();
-		if (pileActivity != activity)
+		if (pileActivity != activity || pileView != props.getView())
 		{
 			clearPile();
 			// Beside you and a little behind: the pile never blocks your view of the work.
 			pileX = at.getX() - fx * 90 - fy * 90;
 			pileY = at.getY() - fy * 90 + fx * 90;
 			pilePlane = plane;
+			pileView = props.getView();
 			pileActivity = activity;
 			pileCount = 0;
 			if (activity == Activity.FISHING)
@@ -858,6 +962,103 @@ public class ImmersiveSkillingPlugin extends Plugin
 		return statusCount;
 	}
 
+	/**
+	 * WHAT: A tip for the panel when effects can't play yet, or "" when there's nothing to say.
+	 * WHY: With a basket or barrel from the first catch, nothing plays until one item arrives
+	 * normally; without a tip that looks like the plugin is broken.
+	 * PRE: Any thread.
+	 * POST: Nothing changes.
+	 * RETURN: the tip, never null
+	 * THROWS: Nothing.
+	 */
+	String getHint()
+	{
+		return hint;
+	}
+
+	private void setHint(String text)
+	{
+		if (!hint.equals(text))
+		{
+			hint = text;
+			refreshPanel();
+		}
+	}
+
+	/**
+	 * WHAT: Whether your inventory holds the basket, barrel or bag for a gathering skill.
+	 * WHY: Only then is a missing item explained by a bag.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: true if one is in the last inventory seen
+	 * THROWS: Nothing.
+	 */
+	private boolean carriesBag(Skill skill)
+	{
+		if (lastInventory == null)
+		{
+			return false;
+		}
+		for (int id : lastInventory.keySet())
+		{
+			if (isBag(skill, client.getItemDefinition(id).getName()))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * WHAT: Whether an item is the basket, barrel or bag a gathering skill's items go into.
+	 * WHY: The bag tip should only show when one is really there, not for XP from other things
+	 * such as Forestry events.
+	 * PRE: name may be null.
+	 * POST: Nothing changes.
+	 * RETURN: true for a log or forestry basket, fish barrel or sack, coal or gem bag
+	 * THROWS: Nothing.
+	 */
+	static boolean isBag(Skill skill, String name)
+	{
+		if (name == null)
+		{
+			return false;
+		}
+		String n = name.toLowerCase(java.util.Locale.ROOT);
+		switch (skill)
+		{
+			case WOODCUTTING:
+				return n.contains("basket");
+			case FISHING:
+				return n.contains("fish barrel") || n.contains("fish sack");
+			case MINING:
+				return n.contains("coal bag") || n.contains("gem bag");
+			default:
+				return false;
+		}
+	}
+
+	/**
+	 * WHAT: The tip for a gathering skill whose items all went into a bag so far.
+	 * WHY: Effects replay the last item; until there is one, the player needs to know why.
+	 * PRE: skill is Woodcutting, Fishing or Mining.
+	 * POST: Nothing changes.
+	 * RETURN: the tip
+	 * THROWS: Nothing.
+	 */
+	static String bagHint(Skill skill)
+	{
+		switch (skill)
+		{
+			case WOODCUTTING:
+				return "Your logs are going into a basket. Chop one without it and effects will follow.";
+			case FISHING:
+				return "Your catches are going into a barrel. Catch one without it and effects will follow.";
+			default:
+				return "Your ore is going into a bag. Mine one without it and effects will follow.";
+		}
+	}
+
 	int getStatusCap()
 	{
 		return statusCap;
@@ -889,6 +1090,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 		pileCount = 0;
 		lastActivity = null;
 		status = "";
+		hint = "";
 		statusCount = 0;
 		refreshPanel();
 	}

@@ -28,6 +28,7 @@ import java.util.HashSet;
 import java.util.Set;
 import net.runelite.api.Skill;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
@@ -277,5 +278,27 @@ public class ImmersiveSkillingTest
 		assertEquals(6, c.pileSize().getCount());
 		assertEquals(ImmersiveSkillingConfig.Amount.NORMAL, c.amount());
 		assertEquals(ImmersiveSkillingConfig.ClearWhen.WALK_AWAY, c.clearWhen());
+	}
+
+	@Test
+	public void bagsAreRecognisedPerSkill()
+	{
+		assertTrue(ImmersiveSkillingPlugin.isBag(Skill.WOODCUTTING, "Log basket"));
+		assertTrue(ImmersiveSkillingPlugin.isBag(Skill.WOODCUTTING, "Forestry basket"));
+		assertTrue(ImmersiveSkillingPlugin.isBag(Skill.FISHING, "Open fish barrel"));
+		assertTrue(ImmersiveSkillingPlugin.isBag(Skill.FISHING, "Fish sack"));
+		assertTrue(ImmersiveSkillingPlugin.isBag(Skill.MINING, "Open coal bag"));
+		assertTrue(ImmersiveSkillingPlugin.isBag(Skill.MINING, "Gem bag"));
+		assertFalse("A barrel isn't a woodcutting bag", ImmersiveSkillingPlugin.isBag(Skill.WOODCUTTING, "Fish barrel"));
+		assertFalse(ImmersiveSkillingPlugin.isBag(Skill.MINING, "Rune pickaxe"));
+		assertFalse(ImmersiveSkillingPlugin.isBag(Skill.FISHING, null));
+	}
+
+	@Test
+	public void bagTipsNameTheBag()
+	{
+		assertTrue(ImmersiveSkillingPlugin.bagHint(Skill.WOODCUTTING).contains("basket"));
+		assertTrue(ImmersiveSkillingPlugin.bagHint(Skill.FISHING).contains("barrel"));
+		assertTrue(ImmersiveSkillingPlugin.bagHint(Skill.MINING).contains("bag"));
 	}
 }

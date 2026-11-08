@@ -64,6 +64,8 @@ final class Props
 		final RuneLiteObject object;
 		final Group group;
 		final int plane;
+		// The worldview it lives in: the main world, or a boat's deck so it sails with you.
+		final int view;
 		// Flight from (fromX, fromY, fromZ) to (toX, toY, toZ), heights above the ground.
 		double fromX;
 		double fromY;
@@ -84,21 +86,49 @@ final class Props
 		double baseOrientation;
 		double expires = Double.MAX_VALUE;
 
-		Prop(RuneLiteObject object, Group group, int plane)
+		Prop(RuneLiteObject object, Group group, int plane, int view)
 		{
 			this.object = object;
 			this.group = group;
 			this.plane = plane;
+			this.view = view;
 		}
 	}
 
 	private final Client client;
 	private final List<Prop> props = new ArrayList<>();
 	private final Map<String, Model> modelCache = new HashMap<>();
+	private int view = -1;
 
 	Props(Client client)
 	{
 		this.client = client;
+	}
+
+	/**
+	 * WHAT: Sets the worldview new props are placed in.
+	 * WHY: On a Sailing boat your position is on the boat's own worldview, not the main world.
+	 * PRE: Client thread. view is a WorldView id (-1 is the main world).
+	 * POST: Props launched from now on live in that worldview.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void setView(int view)
+	{
+		this.view = view;
+	}
+
+	/**
+	 * WHAT: The worldview new props are placed in.
+	 * WHY: The pile is cleared when you board or leave a boat.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: a WorldView id (-1 is the main world)
+	 * THROWS: Nothing.
+	 */
+	int getView()
+	{
+		return view;
 	}
 
 	int count(Group group)
@@ -193,7 +223,7 @@ final class Props
 		RuneLiteObject object = client.createRuneLiteObject();
 		object.setModel(model);
 		object.setOrientation(orientation);
-		Prop p = new Prop(object, group, plane);
+		Prop p = new Prop(object, group, plane, view);
 		p.fromX = fromX;
 		p.fromY = fromY;
 		p.fromZ = fromZ;
@@ -240,7 +270,8 @@ final class Props
 		while (it.hasNext())
 		{
 			Prop p = it.next();
-			if (now >= p.expires)
+			// A boat's worldview goes away when it leaves the scene; its props go with it.
+			if (now >= p.expires || (p.view != -1 && client.getWorldView(p.view) == null))
 			{
 				p.object.setActive(false);
 				it.remove();
@@ -286,7 +317,7 @@ final class Props
 
 	private void place(Prop p, double x, double y, double heightAboveGround)
 	{
-		LocalPoint lp = new LocalPoint((int) x, (int) y, client.getTopLevelWorldView());
+		LocalPoint lp = new LocalPoint((int) x, (int) y, p.view);
 		p.object.setLocation(lp, p.plane);
 		// setLocation puts it on the ground; lift it (up is negative in the game).
 		p.object.setZ(Perspective.getTileHeight(client, lp, p.plane) - (int) heightAboveGround);

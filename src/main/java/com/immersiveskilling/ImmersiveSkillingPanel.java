@@ -195,10 +195,13 @@ class ImmersiveSkillingPanel extends PluginPanel
 		}
 		else if (activity.isEmpty())
 		{
+			String hint = plugin.getHint();
 			statusTitle.setText("Nothing showing yet");
 			statusState.setText(paused ? "paused" : "");
 			statusState.setForeground(ORANGE);
-			statusDetail.setText("Start skilling, or try a Preview.");
+			// The tip is a sentence, so it wraps to the card's width instead of running off it.
+			statusDetail.setText(hint.isEmpty() ? "Start skilling, or try a Preview."
+				: "<html><body style='width:130px'>" + hint + "</body></html>");
 			statusBar.setVisible(false);
 			statusCard.outline(null);
 		}

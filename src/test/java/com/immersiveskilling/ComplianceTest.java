@@ -144,7 +144,7 @@ public class ComplianceTest
 			!Pattern.compile("\\bclient\\.\\w+\\(").matcher(panel).find() && !panel.contains("Client ") && !panel.contains("itemManager"));
 		// Every plugin method the panel calls must be safe from the Swing thread.
 		List<String> allowed = Arrays.asList("preview", "clearFromPanel", "setPaused", "isPaused", "getStatus",
-			"getStatusCount", "getStatusCap");
+			"getStatusCount", "getStatusCap", "getHint");
 		Matcher m = Pattern.compile("plugin(?:::|\\.)(\\w+)").matcher(panel);
 		while (m.find())
 		{

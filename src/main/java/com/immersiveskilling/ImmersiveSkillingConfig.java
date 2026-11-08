@@ -223,4 +223,25 @@ public interface ImmersiveSkillingConfig extends Config
 	{
 		return true;
 	}
+
+	// The last item you got, so a log basket, fish barrel or bag still gets effects.
+	@ConfigItem(keyName = "lastWoodcutting", name = "", description = "", hidden = true)
+	default int lastWoodcutting()
+	{
+		return -1;
+	}
+
+	// The last item you got, so a log basket, fish barrel or bag still gets effects.
+	@ConfigItem(keyName = "lastFishing", name = "", description = "", hidden = true)
+	default int lastFishing()
+	{
+		return -1;
+	}
+
+	// The last item you got, so a log basket, fish barrel or bag still gets effects.
+	@ConfigItem(keyName = "lastMining", name = "", description = "", hidden = true)
+	default int lastMining()
+	{
+		return -1;
+	}
 }
