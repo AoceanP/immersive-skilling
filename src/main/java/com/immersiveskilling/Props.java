@@ -24,6 +24,7 @@
  */
 package com.immersiveskilling;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -62,7 +63,8 @@ final class Props
 	static final class Prop
 	{
 		final RuneLiteObject object;
-		final Group group;
+		// Not final: a pile that's clearing becomes FLOATING, so a new pile can start at once.
+		Group group;
 		final int plane;
 		// The worldview it lives in: the main world, or a boat's deck so it sails with you.
 		final int view;
@@ -83,8 +85,20 @@ final class Props
 		double coolDuration;
 		int shownStep = -1;
 		double spinPerSecond;
+		// Seconds for the spin to wind down; 0 spins at the same speed until it goes.
+		double spinSettle;
 		double baseOrientation;
 		double expires = Double.MAX_VALUE;
+		// Size changes: the item and its normal scale, how long it takes to grow in and to shrink away.
+		int itemId = -1;
+		int scale = 128;
+		double growIn;
+		double shrinkOut;
+		int shownSize = -1;
+		// When something lands on the pile, every item already on it hops a little.
+		double nudgeStart = -1;
+		// Flights still to come, each {start, x, y, z, peak, duration}: e.g. into your pack.
+		final ArrayDeque<double[]> legs = new ArrayDeque<>();
 
 		Prop(RuneLiteObject object, Group group, int plane, int view)
 		{
@@ -109,7 +123,7 @@ final class Props
 	 * WHAT: Sets the worldview new props are placed in.
 	 * WHY: On a Sailing boat your position is on the boat's own worldview, not the main world.
 	 * PRE: Client thread. view is a WorldView id (-1 is the main world).
-	 * POST: Props launched from now on live in that worldview.
+	 * POST: Props launched from now on use it.
 	 * RETURN: Nothing.
 	 * THROWS: Nothing.
 	 */
@@ -118,14 +132,6 @@ final class Props
 		this.view = view;
 	}
 
-	/**
-	 * WHAT: The worldview new props are placed in.
-	 * WHY: The pile is cleared when you board or leave a boat.
-	 * PRE: None.
-	 * POST: Nothing changes.
-	 * RETURN: a WorldView id (-1 is the main world)
-	 * THROWS: Nothing.
-	 */
 	int getView()
 	{
 		return view;
@@ -257,6 +263,106 @@ final class Props
 	}
 
 	/**
+	 * WHAT: Adds another flight after the current one: from where the prop is to a new point.
+	 * WHY: Finished goods don't just vanish where they're made: a bar cools, then goes into your
+	 * pack; a fletched bow spins, then flies to you.
+	 * PRE: Client thread. at is when the flight starts, in seconds, after the current one ends.
+	 * Heights are above the ground.
+	 * POST: The prop will fly there at that time.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	static void then(Prop p, double at, double x, double y, double z, double peak, double duration)
+	{
+		p.legs.addLast(new double[]{at, x, y, z, peak, Math.max(0.001, duration)});
+	}
+
+	/**
+	 * WHAT: Makes every landed prop in a group hop a little at a given time.
+	 * WHY: A log landing on the pile should jolt the logs under it; a still pile looked pasted on.
+	 * PRE: Client thread. at is when the hop starts, in seconds (it may be in the future, when
+	 * the new item will land).
+	 * POST: The group's landed props hop once.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void nudge(Group group, double at)
+	{
+		for (Prop p : props)
+		{
+			if (p.group == group && !p.bounce)
+			{
+				p.nudgeStart = at;
+			}
+		}
+	}
+
+	/**
+	 * WHAT: Clears a group by shrinking its props away one after another, instead of at once.
+	 * WHY: A pile that blinked out when you walked away or banked felt like a glitch.
+	 * PRE: Client thread. now is the current time in seconds.
+	 * POST: The props move to FLOATING (so a new pile can start straight away) and expire within
+	 * about a second.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void dissolve(Group group, double now)
+	{
+		int i = 0;
+		for (Prop p : props)
+		{
+			if (p.group == group)
+			{
+				p.group = Group.FLOATING;
+				p.expires = Math.min(p.expires, now + 0.35 + i * 0.05);
+				p.shrinkOut = 0.35;
+				i++;
+			}
+		}
+	}
+
+	/**
+	 * WHAT: Makes a prop grow in when it appears and shrink away before it goes.
+	 * WHY: Props used to blink in and out; a quick grow with a small overshoot, and a shrink at
+	 * the end, read as the item arriving and leaving.
+	 * PRE: The prop's model is the item at this scale, from itemModel. growIn and shrinkOut are
+	 * seconds; 0 leaves that end as it was.
+	 * POST: The prop resizes as it plays.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	static void resize(Prop p, int itemId, int scale, double growIn, double shrinkOut)
+	{
+		p.itemId = itemId;
+		p.scale = scale;
+		p.growIn = growIn;
+		p.shrinkOut = shrinkOut;
+	}
+
+	/**
+	 * WHAT: How big a resizing prop is right now, as a fraction of its normal size.
+	 * WHY: Grows in with a small overshoot (1.12 at its peak), then shrinks to nothing at the end.
+	 * PRE: age and left are seconds since it started and until it expires.
+	 * POST: Nothing changes.
+	 * RETURN: the size, 0 to about 1.12
+	 * THROWS: Nothing.
+	 */
+	static double size(double age, double left, double growIn, double shrinkOut)
+	{
+		double k = 1;
+		if (growIn > 0 && age < growIn)
+		{
+			double u = Motion.clamp(age / growIn);
+			k = u < 0.7 ? 0.3 + 0.82 * Motion.smooth(u / 0.7) : 1.12 - 0.12 * Motion.smooth((u - 0.7) / 0.3);
+		}
+		if (shrinkOut > 0 && left < shrinkOut)
+		{
+			k *= Motion.smooth(Math.max(0, left) / shrinkOut);
+		}
+		return k;
+	}
+
+	/**
 	 * WHAT: Moves, cools, spins and expires every prop for the current time.
 	 * WHY: Called before each frame is drawn, so motion is as smooth as the frame rate.
 	 * PRE: Client thread. now is in seconds.
@@ -276,6 +382,34 @@ final class Props
 				p.object.setActive(false);
 				it.remove();
 				continue;
+			}
+			// A prop that starts a moment later (the bar after the ore, the second coin) waits unseen.
+			boolean waiting = now < p.start;
+			// A prop shrunk to nothing stays hidden too.
+			boolean show = !waiting && p.shownSize != 0;
+			if (p.object.isActive() != show)
+			{
+				p.object.setActive(show);
+			}
+			if (waiting)
+			{
+				continue;
+			}
+			if (!p.legs.isEmpty() && now >= p.legs.peekFirst()[0])
+			{
+				// The next flight starts from where the last one ended.
+				double[] leg = p.legs.pollFirst();
+				p.fromX = p.toX;
+				p.fromY = p.toY;
+				p.fromZ = p.toZ;
+				p.start = leg[0];
+				p.toX = leg[1];
+				p.toY = leg[2];
+				p.toZ = leg[3];
+				p.peak = leg[4];
+				p.duration = leg[5];
+				p.bounce = false;
+				p.nudgeStart = -1;
 			}
 			double u = Motion.clamp((now - p.start) / p.duration);
 			if (u < 1 || p.bounce)
@@ -297,19 +431,57 @@ final class Props
 					p.bounce = false;
 				}
 			}
+			else if (p.nudgeStart >= 0 && now >= p.nudgeStart)
+			{
+				double v = (now - p.nudgeStart) / 0.35;
+				if (v >= 1)
+				{
+					p.nudgeStart = -1;
+					place(p, p.toX, p.toY, p.toZ);
+				}
+				else
+				{
+					place(p, p.toX, p.toY, p.toZ + Math.abs(Math.sin(v * Math.PI * 2)) * 4 * (1 - v));
+				}
+			}
 			if (p.heatModels != null)
 			{
 				double cooled = Motion.clamp((now - p.coolStart) / p.coolDuration);
 				int step = (int) Math.round((1 - Motion.smooth(cooled)) * HEAT_STEPS);
+				if (cooled >= 1 && p.itemId > 0)
+				{
+					// Cooled: from now on it's sized like any other prop, so it can shrink away.
+					p.heatModels = null;
+					p.shownSize = -1;
+					continue;
+				}
 				if (step != p.shownStep && p.heatModels[step] != null)
 				{
 					p.object.setModel(p.heatModels[step]);
 					p.shownStep = step;
 				}
 			}
+			if (p.itemId > 0 && p.heatModels == null)
+			{
+				// Ten sizes at most per item, so the model cache stays small.
+				int step = (int) Math.round(size(now - p.start, p.expires - now, p.growIn, p.shrinkOut) * 8);
+				if (step != p.shownSize)
+				{
+					p.shownSize = step;
+					Model m = step <= 0 ? null : itemModel(p.itemId, Math.max(16, p.scale * step / 8), 0);
+					if (m != null)
+					{
+						p.object.setModel(m);
+					}
+					p.object.setActive(m != null);
+				}
+			}
 			if (p.spinPerSecond != 0)
 			{
-				int o = (int) (p.baseOrientation + (now - p.start) * p.spinPerSecond) & 2047;
+				double age = now - p.start;
+				// A settling spin turns fast at first and slows to a stop.
+				double turned = p.spinSettle > 0 ? p.spinSettle * (1 - Math.exp(-age / p.spinSettle)) : age;
+				int o = (int) (p.baseOrientation + turned * p.spinPerSecond) & 2047;
 				p.object.setOrientation(o);
 			}
 		}

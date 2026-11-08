@@ -150,7 +150,7 @@ class ImmersiveSkillingPanel extends PluginPanel
 
 		RoundPanel general = card();
 		general.add(bold("General", TEXT));
-		general.add(row("+1 pops", "itemPops", config::itemPops));
+		general.add(row("Item pops", "itemPops", config::itemPops));
 		general.add(segmented("Effect amount", "amount", ImmersiveSkillingConfig.Amount.values(), config::amount));
 		general.add(segmented("Clear piles when", "clearWhen", ImmersiveSkillingConfig.ClearWhen.values(), config::clearWhen));
 		stack.add(general);

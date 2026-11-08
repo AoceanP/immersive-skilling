@@ -45,6 +45,13 @@ enum Activity
 	SMITHING("Smithing"),
 	FLETCHING("Fletching");
 
+	/** Fish that don't start with "raw": eels, minnows and the aerial fishing catches. */
+	private static final java.util.Set<String> OTHER_CATCHES = new java.util.HashSet<>(java.util.Arrays.asList(
+		"infernal eel", "sacred eel", "minnow", "bluegill", "common tench", "mottled eel", "greater siren"));
+	/** Mining finds that aren't ore: Motherlode pay-dirt, amethyst and Camdozaal shards. */
+	private static final java.util.Set<String> OTHER_ROCKS = new java.util.HashSet<>(java.util.Arrays.asList(
+		"pay-dirt", "amethyst", "barronite shards", "barronite deposit", "calcified deposit"));
+
 	private final String displayName;
 
 	Activity(String displayName)
@@ -79,10 +86,12 @@ enum Activity
 			case WOODCUTTING:
 				return name.endsWith("logs") || name.equals("logs") || name.contains("log") ? WOODCUTTING : null;
 			case FISHING:
-				return name.startsWith("raw ") || name.contains("fish") || name.contains("leaping") ? FISHING : null;
+				return name.startsWith("raw ") || name.contains("fish") || name.contains("leaping") || OTHER_CATCHES.contains(name)
+					? FISHING : null;
 			case MINING:
 				return name.endsWith(" ore") || name.equals("coal") || name.startsWith("uncut ") || name.contains("essence")
-					|| name.equals("clay") || name.contains("granite") || name.contains("sandstone") ? MINING : null;
+					|| name.equals("clay") || name.contains("granite") || name.contains("sandstone") || OTHER_ROCKS.contains(name)
+					? MINING : null;
 			case SMITHING:
 				if (name.endsWith(" bar") && nearFurnace)
 				{
@@ -94,6 +103,19 @@ enum Activity
 			default:
 				return null;
 		}
+	}
+
+	/**
+	 * WHAT: Whether the activity builds a pile beside you.
+	 * WHY: Only gathering piles up; the rest play and fade.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: true for woodcutting, fishing and mining
+	 * THROWS: Nothing.
+	 */
+	boolean isGathering()
+	{
+		return this == WOODCUTTING || this == FISHING || this == MINING;
 	}
 
 	/**

@@ -30,8 +30,8 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * WHAT: Small particles in the world: wood chips, sparks, dust, splash droplets, embers and
- * shavings. Each has a position in the game's local units plus a height, a velocity, gravity,
+ * WHAT: Small particles in the world: wood chips, sparks, dust, splash droplets, embers,
+ * shavings, stone chips, falling leaves, ripples and glows. Each has a position in the game's local units plus a height, a velocity, gravity,
  * and a lifetime.
  * WHY: The overlay draws these every frame, so effects move smoothly at any frame rate. Only the
  * client thread touches them (events and overlay rendering both run there).
@@ -47,7 +47,7 @@ final class Particles
 
 	enum Kind
 	{
-		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING
+		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING, STONE, FALLING_LEAF, RIPPLE, GLOW
 	}
 
 	static final class Particle
@@ -62,6 +62,8 @@ final class Particles
 		final double gravity;
 		final double life;
 		double age;
+		// The colour of a ripple or glow, as 0xRRGGBB.
+		int rgb;
 		final double spin;
 		final float size;
 
@@ -150,6 +152,26 @@ final class Particles
 	 * RETURN: Nothing.
 	 * THROWS: Nothing.
 	 */
+	/**
+	 * WHAT: Adds one still particle with its own colour and size: a ripple ring or a glow.
+	 * WHY: Ripples on the water and flashes of light at a furnace or anvil aren't sprays;
+	 * each is one shape that grows and fades where it is.
+	 * PRE: rgb is 0xRRGGBB; size is the radius in local units; life is in seconds.
+	 * POST: One particle is added, unless the limit is reached.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void single(Kind kind, double x, double y, double z, int rgb, float size, double life)
+	{
+		if (live.size() >= MAX)
+		{
+			return;
+		}
+		Particle p = new Particle(kind, x, y, z, 0, 0, 0, 0, life, 0, size);
+		p.rgb = rgb;
+		live.add(p);
+	}
+
 	void burst(Kind kind, double x, double y, double z, int n, double amount)
 	{
 		int count = (int) Math.round(n * amount);
@@ -197,6 +219,22 @@ final class Particles
 					gravity = 0;
 					life = 1.2 + random.nextDouble() * 0.8;
 					size = 1.8f;
+					break;
+				case STONE:
+					// Rock chips: heavier and greyer than wood chips.
+					speed = 60 + random.nextDouble() * 90;
+					up = 110 + random.nextDouble() * 90;
+					gravity = 700;
+					life = 0.7 + random.nextDouble() * 0.3;
+					size = 2.5f;
+					break;
+				case FALLING_LEAF:
+					// Shaken loose from the canopy, drifting down slowly.
+					speed = 10 + random.nextDouble() * 18;
+					up = 5 + random.nextDouble() * 20;
+					gravity = 90;
+					life = 2.2 + random.nextDouble() * 0.6;
+					size = 3f;
 					break;
 				default:
 					speed = 20 + random.nextDouble() * 30;

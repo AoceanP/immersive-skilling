@@ -27,6 +27,7 @@ package com.immersiveskilling;
 import java.util.HashSet;
 import java.util.Set;
 import net.runelite.api.Skill;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -89,6 +90,36 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void catchesAndRocksThatArentRawOrOre()
+	{
+		assertEquals(Activity.FISHING, Activity.classify(Skill.FISHING, "Infernal eel", false, false));
+		assertEquals(Activity.FISHING, Activity.classify(Skill.FISHING, "Minnow", false, false));
+		assertEquals(Activity.FISHING, Activity.classify(Skill.FISHING, "Bluegill", false, false));
+		assertEquals(Activity.MINING, Activity.classify(Skill.MINING, "Pay-dirt", false, false));
+		assertEquals(Activity.MINING, Activity.classify(Skill.MINING, "Amethyst", false, false));
+		assertEquals(Activity.MINING, Activity.classify(Skill.MINING, "Barronite shards", false, false));
+	}
+
+	@Test
+	public void propsGrowInAndShrinkAway()
+	{
+		// Starts small, overshoots a little, settles at full size, then shrinks to nothing.
+		assertEquals(0.3, Props.size(0, 10, 0.2, 0.25), 1e-9);
+		assertTrue(Props.size(0.14, 10, 0.2, 0.25) > 1.05);
+		assertEquals(1.0, Props.size(0.5, 10, 0.2, 0.25), 1e-9);
+		assertEquals(0.5, Props.size(0.5, 0.125, 0.2, 0.25), 1e-9);
+		assertEquals(0.0, Props.size(0.5, 0, 0.2, 0.25), 1e-9);
+		assertEquals("No resize asked, no change", 1.0, Props.size(0, 0, 0, 0), 1e-9);
+	}
+
+	@Test
+	public void popsShowHowMany()
+	{
+		assertEquals("+15 Arrow shaft", ImmersiveSkillingPlugin.popText(Activity.FLETCHING, 15, "Arrow shaft"));
+		assertEquals("+1 Yew logs", ImmersiveSkillingPlugin.popText(Activity.WOODCUTTING, 1, "Yew logs"));
+	}
+
+	@Test
 	public void onlyTheFiveSkillsAreWatched()
 	{
 		int shown = 0;
@@ -96,7 +127,10 @@ public class ImmersiveSkillingTest
 		{
 			shown += ImmersiveSkillingPlugin.isShown(s) ? 1 : 0;
 		}
+		// Cooking is left to Immersive Cooking; combat skills are never touched.
 		assertEquals(5, shown);
+		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.ATTACK) || ImmersiveSkillingPlugin.isShown(Skill.SLAYER));
+		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.COOKING));
 	}
 
 	// ---- Motion ---------------------------------------------------------------------------------
@@ -204,6 +238,52 @@ public class ImmersiveSkillingTest
 		assertTrue(PileLayout.slot(6)[0] > PileLayout.slot(2)[0]);
 	}
 
+	private static int turn(int a, int b)
+	{
+		int d = Math.abs(a - b) & 2047;
+		return Math.min(d, 2048 - d);
+	}
+
+	@Test
+	public void workObjectsAreFoundByTheirActions()
+	{
+		assertTrue(ImmersiveSkillingPlugin.hasAction(new String[]{null, "Chop down", "Examine"}, "chop", "cut"));
+		assertTrue(ImmersiveSkillingPlugin.hasAction(new String[]{"Mine", null}, "mine"));
+		assertTrue(ImmersiveSkillingPlugin.hasAction(new String[]{"Pick", "Inspect"}, "harvest", "pick", "dig"));
+		assertFalse(ImmersiveSkillingPlugin.hasAction(new String[]{"Examine"}, "chop"));
+		assertFalse(ImmersiveSkillingPlugin.hasAction(null, "chop"));
+	}
+
+	@Test
+	public void resourcesComeOffTheSideFacingYou()
+	{
+		// A 2x2 yew with its middle at (1000, 1000) and you two tiles south: the log comes off the
+		// south side of the trunk, 112 units out, not from the middle.
+		double[] e = ImmersiveSkillingPlugin.edge(1000, 1000, 2, 1000, 744);
+		assertEquals(1000, e[0], 1e-9);
+		assertEquals(888, e[1], 1e-9);
+		// Never past you, even right up against it.
+		double[] close = ImmersiveSkillingPlugin.edge(1000, 1000, 3, 1000, 950);
+		assertEquals(950, close[1], 1e-9);
+		// Standing in the middle: the middle.
+		assertArrayEquals(new double[]{5, 5}, ImmersiveSkillingPlugin.edge(5, 5, 1, 5, 5), 1e-9);
+	}
+
+	@Test
+	public void ripplesAndGlowsKeepTheirColour()
+	{
+		Particles p = new Particles(2);
+		p.single(Particles.Kind.GLOW, 0, 0, 60, 0xFF8A2A, 100, 0.5);
+		assertEquals(1, p.getLive().size());
+		assertEquals(0xFF8A2A, p.getLive().get(0).rgb);
+		// Updates step at most 0.1 s at a time, so live through it in steps.
+		for (int i = 0; i < 7; i++)
+		{
+			p.update(0.1);
+		}
+		assertTrue("Gone after its life", p.getLive().isEmpty());
+	}
+
 	// ---- Particles ------------------------------------------------------------------------------
 
 	@Test
@@ -280,6 +360,8 @@ public class ImmersiveSkillingTest
 		assertEquals(ImmersiveSkillingConfig.ClearWhen.WALK_AWAY, c.clearWhen());
 	}
 
+	// ---- Bags, boats and bug reports ------------------------------------------------------------
+
 	@Test
 	public void bagsAreRecognisedPerSkill()
 	{
@@ -300,5 +382,39 @@ public class ImmersiveSkillingTest
 		assertTrue(ImmersiveSkillingPlugin.bagHint(Skill.WOODCUTTING).contains("basket"));
 		assertTrue(ImmersiveSkillingPlugin.bagHint(Skill.FISHING).contains("barrel"));
 		assertTrue(ImmersiveSkillingPlugin.bagHint(Skill.MINING).contains("bag"));
+	}
+
+	@Test
+	public void versionMatchesTheHubProperties() throws java.io.IOException
+	{
+		String props = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("runelite-plugin.properties")),
+			java.nio.charset.StandardCharsets.UTF_8);
+		assertTrue("Bump ImmersiveSkillingPlugin.VERSION with the release",
+			props.contains("version=" + ImmersiveSkillingPlugin.VERSION));
+	}
+
+	@Test
+	public void aMapLoadKeepsXpAndInventory() throws java.io.IOException
+	{
+		// Forgetting them on LOADING made the first item after every region load play nothing.
+		String src = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+			"src/main/java/com/immersiveskilling/ImmersiveSkillingPlugin.java")), java.nio.charset.StandardCharsets.UTF_8);
+		int start = src.indexOf("public void onGameStateChanged(");
+		String body = src.substring(start, src.indexOf("public void onStatChanged(", start));
+		int loading = body.indexOf("GameState.LOADING");
+		assertTrue(loading > 0 && body.indexOf("return;", loading) < body.indexOf("resetState()"));
+	}
+
+	@Test
+	public void effectsFollowYourWorldview() throws java.io.IOException
+	{
+		// On a Sailing boat you stand on the boat's worldview; the main one put effects out at sea.
+		for (String file : new String[]{"ImmersiveSkillingPlugin.java", "Props.java", "EffectsOverlay.java"})
+		{
+			String src = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+				"src/main/java/com/immersiveskilling/" + file)), java.nio.charset.StandardCharsets.UTF_8);
+			int uses = src.split("getTopLevelWorldView\\(", -1).length - 1;
+			assertTrue(file + " places effects in the main world", uses <= (file.startsWith("Immersive") ? 1 : 0));
+		}
 	}
 }

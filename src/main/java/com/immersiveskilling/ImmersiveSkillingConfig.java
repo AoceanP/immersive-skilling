@@ -125,7 +125,7 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Fletching", description = "The finished item and shavings", position = 4)
 	String fletchingSection = "fletching";
 
-	@ConfigSection(name = "General", description = "Shared options", position = 5)
+	@ConfigSection(name = "General", description = "Shared options", position = 17)
 	String generalSection = "general";
 
 	@ConfigItem(keyName = "enabled", name = "Effects on", description = "Turn every effect on or off at once", position = 0)
@@ -200,7 +200,7 @@ public interface ImmersiveSkillingConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "itemPops", name = "+1 pops", description = "The item rises with \"+1\" each time you get one", section = generalSection, position = 12)
+	@ConfigItem(keyName = "itemPops", name = "Item pops", description = "The item rises with how many you got, e.g. \"+15\", each time you get some", section = generalSection, position = 12)
 	default boolean itemPops()
 	{
 		return true;

@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
+import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
@@ -82,12 +83,14 @@ import net.runelite.client.util.ImageUtil;
  */
 @PluginDescriptor(
 	name = "Immersive Skilling",
-	description = "Visual only: log piles, catch baskets, ore chunks, red-hot bars and items, sparks and +1 pops while you skill",
+	description = "Visual only: log piles, catch baskets, ore chunks, red-hot bars and items, sparks and pops while you skill",
 	tags = {"immersive", "visual", "cosmetic", "woodcutting", "fishing", "mining", "smithing", "smelting", "fletching", "skilling"}
 )
 public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
+	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
+	static final String VERSION = "1.1.0";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -225,9 +228,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 		lastInventory = null;
 		lastXp.clear();
 		xpTick.clear();
-		pending.clear();
 		matchedXp.clear();
 		checkedXp.clear();
+		pending.clear();
 		pileActivity = null;
 		pileCount = 0;
 		lastActivity = null;
@@ -322,13 +325,14 @@ public class ImmersiveSkillingPlugin extends Plugin
 		{
 			double dist = Math.hypot(at.getX() - pileX, at.getY() - pileY) / TILE;
 			boolean walkedAway = config.clearWhen() == ImmersiveSkillingConfig.ClearWhen.WALK_AWAY && dist > WALK_AWAY_TILES;
+			// Boarding or leaving a boat moves you to another worldview, so the pile can't follow.
 			if (walkedAway || dist > FAR_TILES || wv.getPlane() != pilePlane || wv.getId() != pileView)
 			{
 				clearPile();
 			}
 		}
-		ambient(player, tick);
 		bagFallback(player, tick);
+		ambient(player, tick);
 	}
 
 	/**
@@ -366,7 +370,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 			Activity activity = skill == Skill.WOODCUTTING ? Activity.WOODCUTTING
 				: skill == Skill.FISHING ? Activity.FISHING : Activity.MINING;
-			play(activity, itemId, client.getItemDefinition(itemId).getName(), Collections.emptyList(), null);
+			play(activity, itemId, client.getItemDefinition(itemId).getName(), Collections.emptyList(), null, 1);
 		}
 	}
 
@@ -464,7 +468,28 @@ public class ImmersiveSkillingPlugin extends Plugin
 			{
 				rememberItem(skill, gain.itemId);
 			}
-			play(activity, gain.itemId, name, gain.lost, activity == Activity.SMELTING ? furnace : anvil);
+			play(activity, gain.itemId, name, gain.lost, station(activity, furnace, anvil), gain.quantity);
+		}
+	}
+
+	/**
+	 * WHAT: Where an effect comes from: the furnace or the anvil.
+	 * WHY: Bars come out of the furnace you use; items take shape on the anvil.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: the place, or null to use the tile in front of you
+	 * THROWS: Nothing.
+	 */
+	private LocalPoint station(Activity activity, LocalPoint furnace, LocalPoint anvil)
+	{
+		switch (activity)
+		{
+			case SMELTING:
+				return furnace;
+			case SMITHING:
+				return anvil;
+			default:
+				return null;
 		}
 	}
 
@@ -484,21 +509,6 @@ public class ImmersiveSkillingPlugin extends Plugin
 			String key = skill == Skill.WOODCUTTING ? "lastWoodcutting" : skill == Skill.FISHING ? "lastFishing" : "lastMining";
 			configManager.setConfiguration(ImmersiveSkillingConfig.GROUP, key, itemId);
 		}
-	}
-
-	/**
-	 * WHAT: The worldview you're standing in: a Sailing boat's deck, or the main world.
-	 * WHY: On a boat your local position is on the boat's own worldview; props and effects
-	 * placed in the main world showed up in the wrong spot or not at all.
-	 * PRE: Client thread. player may be null.
-	 * POST: Nothing changes.
-	 * RETURN: the worldview, never null while logged in
-	 * THROWS: Nothing.
-	 */
-	private WorldView viewOf(Player player)
-	{
-		WorldView wv = player == null ? null : player.getWorldView();
-		return wv != null ? wv : client.getTopLevelWorldView();
 	}
 
 	private Skill skillNear(int tick)
@@ -541,21 +551,21 @@ public class ImmersiveSkillingPlugin extends Plugin
 	}
 
 	/**
-	 * WHAT: The nearest object within 3 tiles whose name contains the given word, e.g. "anvil".
+	 * WHAT: The nearest object within 3 tiles whose name contains one of the given words, e.g. "anvil".
 	 * WHY: Hot bars appear at the furnace you're using and items on the anvil you're using.
 	 * PRE: Client thread.
 	 * POST: Nothing changes.
 	 * RETURN: its location, or null if there isn't one nearby
 	 * THROWS: Nothing.
 	 */
-	private LocalPoint findObject(String word)
+	private LocalPoint findObject(String... words)
 	{
 		Player player = client.getLocalPlayer();
-		WorldView wv = viewOf(player);
-		if (player == null || wv == null || player.getLocalLocation() == null)
+		if (player == null || player.getLocalLocation() == null)
 		{
 			return null;
 		}
+		WorldView wv = viewOf(player);
 		Scene scene = wv.getScene();
 		Tile[][][] tiles = scene.getTiles();
 		int plane = wv.getPlane();
@@ -583,7 +593,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 						def = def.getImpostor();
 					}
 					String name = def == null ? null : def.getName();
-					if (name != null && name.toLowerCase(java.util.Locale.ROOT).contains(word))
+					if (name != null && containsAny(name.toLowerCase(java.util.Locale.ROOT), words))
 					{
 						int dist = Math.abs(x - px) + Math.abs(y - py);
 						if (dist < bestDist)
@@ -598,17 +608,45 @@ public class ImmersiveSkillingPlugin extends Plugin
 		return best;
 	}
 
+	/**
+	 * WHAT: The worldview you're standing on: the main world, or your Sailing boat.
+	 * WHY: On a boat your position is on the boat's own worldview. Effects placed in the main
+	 * world from that position landed somewhere out at sea, so boat fishing showed nothing.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: the player's worldview, or the main one if the player has none
+	 * THROWS: Nothing.
+	 */
+	private WorldView viewOf(Player player)
+	{
+		WorldView wv = player == null ? null : player.getWorldView();
+		return wv != null ? wv : client.getTopLevelWorldView();
+	}
+
+	private static boolean containsAny(String name, String[] words)
+	{
+		for (String word : words)
+		{
+			if (name.contains(word))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// ---- Effects ----------------------------------------------------------------------------
 
 	/**
 	 * WHAT: Plays the effect for one item made by an activity.
 	 * WHY: The heart of the plugin: decides which props fly where and which particles burst.
 	 * PRE: Client thread. station is the furnace or anvil, or null.
+	 * quantity is how many arrived, for the pop.
 	 * POST: Props and particles are added; the panel status is updated.
 	 * RETURN: Nothing.
 	 * THROWS: Nothing.
 	 */
-	void play(Activity activity, int itemId, String itemName, List<Integer> lost, LocalPoint station)
+	void play(Activity activity, int itemId, String itemName, List<Integer> lost, LocalPoint station, int quantity)
 	{
 		if (!config.enabled() || paused || props == null)
 		{
@@ -639,49 +677,72 @@ public class ImmersiveSkillingPlugin extends Plugin
 		targetX = station != null ? station.getX() : tx;
 		targetY = station != null ? station.getY() : ty;
 		lastStandPoint = at;
-		String popText = "+1 " + itemName;
+		// Where a gathered resource really comes from: the trunk, the rock face, the fishing spot,
+		// the patch. {x, y} on the side facing you, then the object's middle.
+		double[] src = source(activity, at, tx, ty);
+		if (activity.isGathering())
+		{
+			targetX = src[0];
+			targetY = src[1];
+		}
+		String popText = popText(activity, quantity, itemName);
 
 		switch (activity)
 		{
 			case WOODCUTTING:
 				if (config.woodChips())
 				{
-					particles.burst(Particles.Kind.CHIP, tx, ty, 70, 10, amount);
+					// Chips fly off the trunk where your axe bites; leaves fall from the canopy.
+					particles.burst(Particles.Kind.CHIP, src[0], src[1], 70, 10, amount);
+					particles.burst(Particles.Kind.FALLING_LEAF, src[2], src[3], 230, 3, amount);
 				}
 				if (config.logPile())
 				{
-					addToPile(activity, itemId, at, fx, fy, plane, tx, ty, 50, 70, now);
+					// The log drops from the trunk and tumbles onto the pile.
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 90, 60, now);
 				}
 				break;
 			case FISHING:
 				if (config.splashes())
 				{
-					particles.burst(Particles.Kind.DROPLET, tx, ty, 0, 12, amount);
+					// The catch leaps out of the fishing spot itself, with a splash and rings.
+					particles.burst(Particles.Kind.DROPLET, src[0], src[1], 0, 12, amount);
+					particles.single(Particles.Kind.RIPPLE, src[0], src[1], 0, 0xDCF0FF, 70, 1.0);
+					particles.single(Particles.Kind.RIPPLE, src[0], src[1], 0, 0xDCF0FF, 120, 1.4);
 				}
 				if (config.catchBasket())
 				{
-					addToPile(activity, itemId, at, fx, fy, plane, tx, ty, 20, 120, now);
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 10, 130, now);
 				}
 				break;
 			case MINING:
 				if (config.dustSparks())
 				{
-					particles.burst(Particles.Kind.DUST, tx, ty, 50, 6, amount);
-					particles.burst(Particles.Kind.SPARK, tx, ty, 60, 10, amount);
+					// The rock face takes the hit: dust, sparks and chips fly from it.
+					particles.burst(Particles.Kind.DUST, src[0], src[1], 50, 6, amount);
+					particles.burst(Particles.Kind.SPARK, src[0], src[1], 60, 10, amount);
+					particles.burst(Particles.Kind.STONE, src[0], src[1], 55, 6, amount);
 				}
 				if (config.oreChunks())
 				{
-					addToPile(activity, itemId, at, fx, fy, plane, tx, ty, 50, 55, now);
+					// The ore breaks off the face and bounces onto the heap.
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 45, 60, now);
 				}
 				break;
 			case SMELTING:
 				smelt(itemId, lost, station, at, plane, now, amount);
 				break;
 			case SMITHING:
-				smith(itemId, station, tx, ty, plane, now, amount);
+			{
+				// The bars go from your pack onto the anvil, then the item takes shape on it.
+				double d = ingredients(lost, at, station != null ? station.getX() : tx, station != null ? station.getY() : ty,
+					station != null ? 75 : 45, plane, now);
+				smith(itemId, station, tx, ty, plane, now + d, amount);
+			}
 				break;
 			default:
-				fletch(itemId, at, fx, fy, plane, now, amount);
+				fletch(itemId, at, fx, fy, plane,
+					now + ingredients(lost, at, at.getX() + fx * 80, at.getY() + fy * 80, 60, plane, now), amount);
 				break;
 		}
 		if (config.itemPops())
@@ -710,7 +771,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 			if (activity == Activity.FISHING)
 			{
 				Model basket = props.itemModel(ItemID.BASKET_EMPTY, 200, 0);
-				props.launch(basket, Props.Group.BASKET, plane, pileX, pileY, 0, pileX, pileY, 0, 0, 0.01, false, 0, now);
+				Props.Prop b = props.launch(basket, Props.Group.BASKET, plane, pileX, pileY, 0, pileX, pileY, 0, 0, 0.01, false, 0,
+					now);
+				if (b != null)
+				{
+					// The basket pops into place.
+					Props.resize(b, ItemID.BASKET_EMPTY, 200, 0.25, 0);
+				}
 			}
 		}
 		if (pileCount >= cap)
@@ -728,8 +795,210 @@ public class ImmersiveSkillingPlugin extends Plugin
 			slot[3], now);
 		if (p != null)
 		{
+			// Sized, so it can shrink away item by item when the pile clears.
+			Props.resize(p, itemId, 128, 0, 0);
 			pileCount++;
 		}
+	}
+
+	/**
+	 * WHAT: What you used flies from you into what you're making: bars onto the anvil, the herb
+	 * and vial into the potion, logs under the knife, the uncut gem under the chisel.
+	 * WHY: The product appearing out of nothing skipped half the story; now you see the
+	 * ingredients go in, then the product come out.
+	 * PRE: Client thread. lost holds what left your inventory; (x, y, z) is where the product
+	 * appears, z above the ground.
+	 * POST: Up to two small props are added.
+	 * RETURN: how long until they arrive, in seconds (0 when nothing went in), so the product can
+	 * appear just as they do
+	 * THROWS: Nothing.
+	 */
+	private double ingredients(List<Integer> lost, LocalPoint at, double x, double y, double z, int plane, double now)
+	{
+		int shown = 0;
+		for (int id : lost)
+		{
+			if (shown >= 2)
+			{
+				break;
+			}
+			Props.Prop p = props.launch(props.itemModel(id, 90, 0), Props.Group.FLOATING, plane, at.getX(), at.getY(), 70, x, y, z,
+				30, 0.28, false, 0, now + shown * 0.06);
+			if (p != null)
+			{
+				p.spinPerSecond = 500;
+				p.expires = now + 0.28 + shown * 0.06;
+				Props.resize(p, id, 90, 0.08, 0.1);
+				shown++;
+			}
+		}
+		return shown == 0 ? 0 : 0.3 + (shown - 1) * 0.06;
+	}
+
+	/**
+	 * WHAT: Where a gathered resource comes from: the edge of the tree, rock or patch you're
+	 * working (on your side), or the fishing spot you're fishing.
+	 * WHY: Everything used to start from the tile in front of you; a big yew's trunk or a
+	 * fishing spot two tiles out are somewhere else.
+	 * PRE: Client thread. (tx, ty) is the tile in front of you, used if nothing is found.
+	 * POST: Nothing changes.
+	 * RETURN: {x, y, middleX, middleY} in local units
+	 * THROWS: Nothing.
+	 */
+	private double[] source(Activity activity, LocalPoint at, double tx, double ty)
+	{
+		String[] actions;
+		switch (activity)
+		{
+			case WOODCUTTING:
+				actions = new String[]{"chop", "cut"};
+				break;
+			case MINING:
+				actions = new String[]{"mine"};
+				break;
+			case FISHING:
+			{
+				Player player = client.getLocalPlayer();
+				Actor spot = player == null ? null : player.getInteracting();
+				WorldView spotView = spot == null ? null : spot.getWorldView();
+				if (spotView != null && spotView.getId() == viewOf(player).getId() && spot.getLocalLocation() != null)
+				{
+					LocalPoint s = spot.getLocalLocation();
+					return new double[]{s.getX(), s.getY(), s.getX(), s.getY()};
+				}
+				return new double[]{tx, ty, tx, ty};
+			}
+			default:
+				return new double[]{tx, ty, tx, ty};
+		}
+		GameObject object = workObject(at, actions);
+		if (object == null || object.getLocalLocation() == null)
+		{
+			return new double[]{tx, ty, tx, ty};
+		}
+		double cx = object.getLocalLocation().getX();
+		double cy = object.getLocalLocation().getY();
+		double[] e = edge(cx, cy, Math.max(object.sizeX(), object.sizeY()), at.getX(), at.getY());
+		return new double[]{e[0], e[1], cx, cy};
+	}
+
+	/**
+	 * WHAT: The object within two tiles that has one of the given right-click actions, e.g. the
+	 * tree you can "Chop down", nearest first and in front of you when two are as near.
+	 * WHY: Matching by action finds every tree, rock and patch the game has, without a list.
+	 * PRE: Client thread. actions are lower case starts of the actions, e.g. "chop".
+	 * POST: Nothing changes.
+	 * RETURN: the object, or null
+	 * THROWS: Nothing.
+	 */
+	private GameObject workObject(LocalPoint at, String... actions)
+	{
+		Player player = client.getLocalPlayer();
+		if (player == null || at == null)
+		{
+			return null;
+		}
+		WorldView wv = viewOf(player);
+		Tile[][][] tiles = wv.getScene().getTiles();
+		int plane = wv.getPlane();
+		int px = at.getSceneX();
+		int py = at.getSceneY();
+		double angle = player.getCurrentOrientation() * Math.PI * 2 / 2048;
+		double fx = -Math.sin(angle);
+		double fy = -Math.cos(angle);
+		GameObject best = null;
+		double bestScore = Double.MAX_VALUE;
+		for (int x = px - 2; x <= px + 2; x++)
+		{
+			for (int y = py - 2; y <= py + 2; y++)
+			{
+				if (x < 0 || y < 0 || x >= tiles[plane].length || y >= tiles[plane][x].length || tiles[plane][x][y] == null)
+				{
+					continue;
+				}
+				for (GameObject object : tiles[plane][x][y].getGameObjects())
+				{
+					if (object == null || object.getLocalLocation() == null)
+					{
+						continue;
+					}
+					ObjectComposition def = client.getObjectDefinition(object.getId());
+					if (def != null && def.getImpostorIds() != null)
+					{
+						def = def.getImpostor();
+					}
+					if (def == null || !hasAction(def.getActions(), actions))
+					{
+						continue;
+					}
+					double dx = object.getLocalLocation().getX() - at.getX();
+					double dy = object.getLocalLocation().getY() - at.getY();
+					double d = Math.hypot(dx, dy);
+					// Nearest wins; one in front of you beats one behind.
+					double score = d - (d > 0 ? (dx * fx + dy * fy) / d * 48 : 0);
+					if (score < bestScore)
+					{
+						bestScore = score;
+						best = object;
+					}
+				}
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * WHAT: Whether any of an object's right-click actions starts with one of the wanted words.
+	 * WHY: Trees say "Chop down", rocks "Mine", patches "Harvest" or "Pick"; the exact wording varies.
+	 * PRE: actions may be null or hold nulls; wanted are lower case.
+	 * POST: Nothing changes.
+	 * RETURN: true if one matches
+	 * THROWS: Nothing.
+	 */
+	static boolean hasAction(String[] actions, String... wanted)
+	{
+		if (actions == null)
+		{
+			return false;
+		}
+		for (String a : actions)
+		{
+			if (a == null)
+			{
+				continue;
+			}
+			String lower = a.toLowerCase(java.util.Locale.ROOT);
+			for (String w : wanted)
+			{
+				if (lower.startsWith(w))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * WHAT: The point on an object's edge facing you, from its middle and its size in tiles.
+	 * WHY: A log comes off the trunk on your side, ore off the face you're hitting, a bar out of
+	 * the furnace's mouth, not out of the middle of the object.
+	 * PRE: (cx, cy) is the object's middle and (px, py) is you, in local units; size >= 1.
+	 * POST: Nothing changes.
+	 * RETURN: {x, y}
+	 * THROWS: Nothing.
+	 */
+	static double[] edge(double cx, double cy, int size, double px, double py)
+	{
+		double dx = px - cx;
+		double dy = py - cy;
+		double d = Math.hypot(dx, dy);
+		if (d < 1)
+		{
+			return new double[]{cx, cy};
+		}
+		double reach = Math.min(d, Math.max(1, size) * TILE / 2.0 - 16);
+		return new double[]{cx + dx / d * reach, cy + dy / d * reach};
 	}
 
 	private Model[] heatModels(int itemId)
@@ -746,6 +1015,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 	{
 		double fx = furnace != null ? furnace.getX() : targetX;
 		double fy = furnace != null ? furnace.getY() : targetY;
+		if (furnace != null)
+		{
+			// The furnace's mouth, on the side facing you, not its middle.
+			double[] mouth = edge(fx, fy, 2, at.getX(), at.getY());
+			fx = mouth[0];
+			fy = mouth[1];
+		}
 		// Ore and coal fly from you into the furnace.
 		int thrown = 0;
 		for (int oreId : lost)
@@ -759,11 +1035,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 			if (ore != null)
 			{
 				ore.expires = now + 0.45;
+				Props.resize(ore, oreId, 100, 0, 0.1);
 			}
 		}
 		if (config.forgeSparks())
 		{
 			overlay.getParticles().burst(Particles.Kind.EMBER, fx, fy, 70, 8, amount);
+			overlay.getParticles().single(Particles.Kind.GLOW, fx, fy, 60, 0xFF8C28, 90, 0.7);
 		}
 		if (!config.hotMetal())
 		{
@@ -777,8 +1055,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 			true, 0, now + 0.35);
 		if (bar != null)
 		{
-			Props.cool(bar, models, now + 0.9, 3.0);
-			bar.expires = now + 5;
+			// It cools where it landed, then you pick it up.
+			Props.cool(bar, models, now + 0.9, 1.8);
+			Props.then(bar, now + 2.8, at.getX(), at.getY(), 80, 40, 0.45);
+			bar.expires = now + 3.25;
+			Props.resize(bar, barId, 128, 0, 0.2);
 		}
 	}
 
@@ -790,20 +1071,25 @@ public class ImmersiveSkillingPlugin extends Plugin
 		if (config.forgeSparks())
 		{
 			overlay.getParticles().burst(Particles.Kind.SPARK, ax, ay, top + 5, 16, amount);
+			// The flash of the hammer striking hot metal.
+			overlay.getParticles().single(Particles.Kind.GLOW, ax, ay, top + 10, 0xFFD27A, 60, 0.3);
 		}
 		if (!config.hotMetal())
 		{
 			return;
 		}
-		// Only one item on the anvil at a time: the last one makes way.
-		props.clear(Props.Group.FLOATING);
 		Model[] models = heatModels(itemId);
 		Props.Prop item = props.launch(models[Props.HEAT_STEPS], Props.Group.FLOATING, plane, ax, ay, top + 20, ax, ay, top, 0,
 			0.25, true, 0, now);
 		if (item != null)
 		{
-			Props.cool(item, models, now + 0.5, 3.0);
-			item.expires = now + 4.5;
+			// It cools on the anvil, then you pick it up: it flies into your pack. Done before the
+			// next one is hammered, so the anvil never holds two.
+			LocalPoint me = client.getLocalPlayer().getLocalLocation();
+			Props.cool(item, models, now + 0.4, 1.9);
+			Props.then(item, now + 2.4, me.getX(), me.getY(), 80, 45, 0.45);
+			item.expires = now + 2.85;
+			Props.resize(item, itemId, 128, 0, 0.2);
 		}
 	}
 
@@ -823,10 +1109,30 @@ public class ImmersiveSkillingPlugin extends Plugin
 			false, 0, now);
 		if (item != null)
 		{
-			item.spinPerSecond = 700;
-			item.expires = now + 1.6;
+			item.spinPerSecond = 1400;
+			item.spinSettle = 0.5;
+			// Then into your pack: it flies to you and shrinks away.
+			Props.then(item, now + 1.15, at.getX(), at.getY(), 80, 30, 0.4);
+			item.expires = now + 1.55;
+			Props.resize(item, itemId, 128, 0.2, 0.2);
 		}
 	}
+
+	/**
+	 * WHAT: The pop's text, e.g. "+15 Arrow shaft".
+	 * WHY: It used to say "+1" even when 15 arrived at once.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: the text
+	 * THROWS: Nothing.
+	 */
+	static String popText(Activity activity, int quantity, String itemName)
+	{
+		return "+" + Math.max(1, quantity) + " " + itemName;
+	}
+
+	private static final String[] SHINY = {"opal", "jade", "topaz", "sapphire", "emerald", "ruby", "diamond", "dragonstone",
+		"onyx", "zenyte", "gold", "silver", "glass", "orb", "ring", "amulet", "necklace", "bracelet", "tiara"};
 
 	/**
 	 * WHAT: Small effects while you keep working: chips, sparks, splashes, embers, shavings.
@@ -857,12 +1163,20 @@ public class ImmersiveSkillingPlugin extends Plugin
 				if (config.woodChips())
 				{
 					particles.burst(Particles.Kind.CHIP, targetX, targetY, 70, 5, amount);
+					if (tick % 6 == 0)
+					{
+						particles.burst(Particles.Kind.FALLING_LEAF, targetX, targetY, 230, 1, 1);
+					}
 				}
 				break;
 			case FISHING:
 				if (config.splashes())
 				{
 					particles.burst(Particles.Kind.DROPLET, targetX, targetY, 0, 4, amount);
+					if (tick % 4 == 0)
+					{
+						particles.single(Particles.Kind.RIPPLE, targetX, targetY, 0, 0xDCF0FF, 60, 1.2);
+					}
 				}
 				break;
 			case MINING:
@@ -870,6 +1184,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 				{
 					particles.burst(Particles.Kind.SPARK, targetX, targetY, 60, 6, amount);
 					particles.burst(Particles.Kind.DUST, targetX, targetY, 50, 2, amount);
+					particles.burst(Particles.Kind.STONE, targetX, targetY, 55, 2, amount);
 				}
 				break;
 			case SMELTING:
@@ -884,12 +1199,15 @@ public class ImmersiveSkillingPlugin extends Plugin
 					particles.burst(Particles.Kind.SPARK, targetX, targetY, 75, 8, amount);
 				}
 				break;
-			default:
+			case FLETCHING:
 				if (config.shavings())
 				{
 					LocalPoint at = player.getLocalLocation();
 					particles.burst(Particles.Kind.SHAVING, at.getX(), at.getY(), 70, 2, amount);
 				}
+				break;
+			default:
+				// The other skills play once per item.
 				break;
 		}
 	}
@@ -915,22 +1233,22 @@ public class ImmersiveSkillingPlugin extends Plugin
 			switch (activity)
 			{
 				case WOODCUTTING:
-					play(activity, ItemID.YEW_LOGS, "Yew logs", Collections.emptyList(), null);
+					play(activity, ItemID.YEW_LOGS, "Yew logs", Collections.emptyList(), null, 1);
 					break;
 				case FISHING:
-					play(activity, ItemID.RAW_LOBSTER, "Raw lobster", Collections.emptyList(), null);
+					play(activity, ItemID.RAW_LOBSTER, "Raw lobster", Collections.emptyList(), null, 1);
 					break;
 				case MINING:
-					play(activity, ItemID.IRON_ORE, "Iron ore", Collections.emptyList(), null);
+					play(activity, ItemID.IRON_ORE, "Iron ore", Collections.emptyList(), null, 1);
 					break;
 				case SMELTING:
-					play(activity, ItemID.STEEL_BAR, "Steel bar", java.util.Arrays.asList(ItemID.IRON_ORE, ItemID.COAL), null);
+					play(activity, ItemID.STEEL_BAR, "Steel bar", Arrays.asList(ItemID.IRON_ORE, ItemID.COAL), null, 1);
 					break;
 				case SMITHING:
-					play(activity, ItemID.STEEL_PLATEBODY, "Steel platebody", Collections.emptyList(), null);
+					play(activity, ItemID.STEEL_PLATEBODY, "Steel platebody", Collections.emptyList(), null, 1);
 					break;
 				default:
-					play(activity, ItemID.UNSTRUNG_YEW_LONGBOW, "Yew longbow (u)", Collections.emptyList(), null);
+					play(activity, ItemID.UNSTRUNG_YEW_LONGBOW, "Yew longbow (u)", Collections.emptyList(), null, 1);
 					break;
 			}
 		});
@@ -1070,8 +1388,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 	{
 		if (props != null)
 		{
-			props.clear(Props.Group.PILE);
-			props.clear(Props.Group.BASKET);
+			// Shrinks away item by item; logging out and map loads still clear at once (clearAll).
+			props.dissolve(Props.Group.PILE, seconds());
+			props.dissolve(Props.Group.BASKET, seconds());
 		}
 		pileActivity = null;
 		pileCount = 0;
@@ -1090,7 +1409,6 @@ public class ImmersiveSkillingPlugin extends Plugin
 		pileCount = 0;
 		lastActivity = null;
 		status = "";
-		hint = "";
 		statusCount = 0;
 		refreshPanel();
 	}
@@ -1098,7 +1416,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private void updateStatus(Activity activity)
 	{
 		status = activity.getDisplayName();
-		boolean piles = activity == Activity.WOODCUTTING || activity == Activity.FISHING || activity == Activity.MINING;
+		boolean piles = activity.isGathering();
 		statusCount = piles ? pileCount : 0;
 		statusCap = piles ? config.pileSize().getCount() : 0;
 		refreshPanel();

@@ -53,8 +53,8 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * WHAT: Draws the particles (chips, sparks, dust, droplets, embers, shavings) and the "+1"
- * item pops on the game view, every frame.
+ * WHAT: Draws the particles (chips, sparks, dust, droplets, embers, shavings, stone chips,
+ * leaves, ripples and glows) and the "+N" item pops on the game view, every frame.
  * WHY: Small fast effects look best as a smooth 2D layer on top of the scene; they're drawn at
  * world positions, so they stay in place when the camera moves.
  * PRE: Overlays render on the client thread, the same thread that adds particles and pops.
@@ -64,7 +64,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  */
 class EffectsOverlay extends Overlay
 {
-	/** How long a "+1" pop lasts, in seconds. */
+	/** How long an item pop lasts, in seconds. */
 	static final double POP_SECONDS = 1.3;
 
 	static final class Pop
@@ -114,7 +114,7 @@ class EffectsOverlay extends Overlay
 	 * WHAT: Sets the worldview and plane particles and pops are drawn on.
 	 * WHY: On a Sailing boat your position is on the boat's own worldview, not the main world.
 	 * PRE: view is a WorldView id (-1 is the main world).
-	 * POST: Effects are drawn in that worldview from the next frame.
+	 * POST: Drawing uses them from the next frame.
 	 * RETURN: Nothing.
 	 * THROWS: Nothing.
 	 */
@@ -178,6 +178,11 @@ class EffectsOverlay extends Overlay
 		return Perspective.localToCanvas(client, lp, plane, (int) z);
 	}
 
+	private static Color colour(int rgb, double alpha)
+	{
+		return new Color((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, (int) Math.round(255 * Math.max(0, Math.min(1, alpha))));
+	}
+
 	private void drawParticle(Graphics2D g, Particles.Particle p)
 	{
 		Point at = project(p.x, p.y, p.z);
@@ -237,6 +242,52 @@ class EffectsOverlay extends Overlay
 				g.fill(new Ellipse2D.Double(x - 1, y - 1, 2, 2));
 				break;
 			}
+			case STONE:
+			{
+				AffineTransform t = g.getTransform();
+				g.translate(x, y);
+				g.rotate(p.age * p.spin);
+				g.setColor(new Color(132, 126, 118, (int) (235 * alpha)));
+				g.fillRect(-2, -2, 4, 3);
+				g.setTransform(t);
+				break;
+			}
+			case FALLING_LEAF:
+			{
+				// Swings side to side as it falls.
+				AffineTransform t = g.getTransform();
+				g.translate(x + Math.sin(p.age * 3 + p.spin) * 6, y);
+				g.rotate(Math.sin(p.age * 2.5 + p.spin) * 0.9);
+				g.setColor(new Color(96, 152, 64, (int) (230 * alpha)));
+				g.fill(new Ellipse2D.Double(-3.5, -1.5, 7, 3));
+				g.setTransform(t);
+				break;
+			}
+			case RIPPLE:
+			{
+				// A flat ring on the ground or water, sized by projecting its edge.
+				double r = p.size * (0.25 + 0.75 * Motion.easeOut(life));
+				Point edge = project(p.x + r, p.y, p.z);
+				if (edge != null)
+				{
+					double rx = Math.max(2, Math.hypot(edge.getX() - x, edge.getY() - y));
+					g.setStroke(new BasicStroke(1.6f));
+					g.setColor(colour(p.rgb, 0.8 * (1 - life)));
+					g.draw(new Ellipse2D.Double(x - rx, y - rx * 0.42, rx * 2, rx * 0.84));
+				}
+				break;
+			}
+			case GLOW:
+			{
+				// A flash of light: swells and fades.
+				double k = Math.sin(life * Math.PI);
+				Point edge = project(p.x + p.size, p.y, p.z);
+				double r = edge == null ? p.size / 4 : Math.max(4, Math.hypot(edge.getX() - x, edge.getY() - y)) * (0.6 + 0.4 * k);
+				g.setPaint(new RadialGradientPaint(new Point2D.Double(x, y), (float) r, new float[]{0f, 0.4f, 1f},
+					new Color[]{colour(p.rgb, 0.55 * k), colour(p.rgb, 0.2 * k), colour(p.rgb, 0)}));
+				g.fill(new Ellipse2D.Double(x - r, y - r, r * 2, r * 2));
+				break;
+			}
 			default:
 				g.setStroke(new BasicStroke(1.4f));
 				g.setColor(new Color(214, 176, 112, (int) (220 * alpha)));
@@ -261,7 +312,7 @@ class EffectsOverlay extends Overlay
 		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, alpha))));
 		g.translate(at.getX(), at.getY());
 		g.scale(scale, scale);
-		BufferedImage icon = itemManager.getImage(pop.itemId);
+		BufferedImage icon = pop.itemId > 0 ? itemManager.getImage(pop.itemId) : null;
 		int textX = 4;
 		if (icon != null)
 		{
