@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Actor;
@@ -94,7 +95,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.1.3";
+	static final String VERSION = "1.2.0";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -162,6 +163,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private LocalPoint lastStandPoint;
 
 	private volatile boolean paused;
+	// Rare moments: the dice, the next preview forced rare, and how many you've seen this session.
+	private final Random random = new Random();
+	private volatile boolean forceRare;
+	private volatile int rareCount;
+	// The rare moments log for the account you're on, and which account it belongs to.
+	private volatile RareLog rareLog = new RareLog();
+	private String rareProfile;
 	private volatile String status = "";
 	private volatile String hint = "";
 	private volatile int statusCount;
@@ -363,6 +371,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 				clearPile();
 			}
 		}
+		syncRareLog();
 		bagFallback(player, tick);
 		ambient(player, tick);
 	}
@@ -740,6 +749,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 		Particles particles = overlay.getParticles();
 
 		setHint("");
+		// Now and then a rare moment: the item turns gold and a flourish of light plays.
+		boolean rare = rollRare();
+		props.setGolden(rare);
 		lastActivity = activity;
 		lastActivityTime = now;
 		targetX = station != null ? station.getX() : tx;
@@ -862,6 +874,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 			double popY = pileActivity == activity ? pileY : overYou ? at.getY() : targetY;
 			overlay.addPop(new EffectsOverlay.Pop(itemId, popText, popX, popY, plane, now));
 		}
+		props.setGolden(false);
+		if (rare)
+		{
+			rareFlourish(activity, itemName, at, plane, now, amount);
+		}
 		updateStatus(activity);
 	}
 
@@ -893,6 +910,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 					pileYaw, now);
 				if (b != null)
 				{
+					b.golden = false;
 					// The basket pops into place.
 					Props.resize(b, ItemID.BASKET_EMPTY, 200, 0.25, 0);
 				}
@@ -956,6 +974,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 				30, 0.28, false, 0, now + shown * 0.06);
 			if (p != null)
 			{
+				// Only the product of a rare moment turns gold, not what went into it.
+				p.golden = false;
 				p.spinPerSecond = 500;
 				p.expires = now + 0.28 + shown * 0.06;
 				Props.resize(p, id, 90, 0.08, 0.1);
@@ -1765,11 +1785,164 @@ public class ImmersiveSkillingPlugin extends Plugin
 		{
 			overlay.addPop(new EffectsOverlay.Pop(-1, agilityText(gained), at.getX(), at.getY(), wv.getPlane(), now));
 		}
+		if (rollRare())
+		{
+			rareFlourish(Activity.AGILITY, "Agility", at, wv.getPlane(), now, config.amount().getScale());
+		}
 		setHint("");
 		lastActivity = Activity.AGILITY;
 		lastActivityTime = now;
 		lastStandPoint = at;
 		updateStatus(Activity.AGILITY);
+	}
+
+	/**
+	 * WHAT: Rolls for a rare moment, or takes a forced one from "Preview a rare one".
+	 * WHY: One place decides, so every skill uses the same chance setting.
+	 * PRE: Client thread.
+	 * POST: A forced rare is used up.
+	 * RETURN: true for a rare moment
+	 * THROWS: Nothing.
+	 */
+	private boolean rollRare()
+	{
+		boolean rare = forceRare || (config.rareMoments() && random.nextInt(config.rareChance().getOdds()) == 0);
+		forceRare = false;
+		return rare;
+	}
+
+	/**
+	 * WHAT: A rare moment's flourish: a golden flash and ring of light, a shower of glints, and a
+	 * twist for each skill (a burst of leaves, a big splash, a fountain of sparks, the fire
+	 * roaring up, light pouring onto the altar...).
+	 * WHY: A 1-in-100 surprise keeps a long grind fun, and it's a moment worth clipping.
+	 * PRE: Client thread. targetX/targetY are where this activity's effect is centred.
+	 * POST: Particles and a "Rare moment!" pop are added; the log is updated and saved, and each
+	 * achievement it unlocks gets its own pop.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void rareFlourish(Activity activity, String itemName, LocalPoint at, int plane, double now, double amount)
+	{
+		Particles p = overlay.getParticles();
+		double x = targetX;
+		double y = targetY;
+		p.single(Particles.Kind.GLOW, x, y, 90, 0xFFD84A, 160, 1.3);
+		p.single(Particles.Kind.RIPPLE, x, y, 0, 0xFFD84A, 200, 1.3);
+		p.single(Particles.Kind.RIPPLE, at.getX(), at.getY(), 0, 0xFFE89A, 140, 1.0);
+		p.burst(Particles.Kind.GLINT, x, y, 90, 24, amount);
+		switch (activity)
+		{
+			case WOODCUTTING:
+				p.burst(Particles.Kind.FALLING_LEAF, x, y, 240, 14, amount);
+				p.burst(Particles.Kind.CHIP, x, y, 70, 12, amount);
+				break;
+			case FISHING:
+				p.burst(Particles.Kind.DROPLET, x, y, 0, 30, amount);
+				p.single(Particles.Kind.RIPPLE, x, y, 0, 0xDCF0FF, 240, 1.8);
+				break;
+			case MINING:
+			case SMELTING:
+			case SMITHING:
+				p.burst(Particles.Kind.SPARK, x, y, 70, 36, amount);
+				p.burst(Particles.Kind.EMBER, x, y, 60, 14, amount);
+				break;
+			case FIREMAKING:
+				p.burst(Particles.Kind.EMBER, x, y, 50, 40, amount);
+				p.single(Particles.Kind.GLOW, x, y, 80, 0xFF8A2A, 240, 1.6);
+				break;
+			case PRAYER:
+				p.burst(Particles.Kind.MOTE, x, y, 20, 30, amount);
+				p.single(Particles.Kind.GLOW, x, y, 160, 0xFFF0B0, 220, 1.6);
+				break;
+			case RUNECRAFT:
+				p.single(Particles.Kind.GLOW, x, y, 80, 0xB070FF, 220, 1.4);
+				p.burst(Particles.Kind.GLINT, x, y, 120, 20, amount);
+				break;
+			case ALCHING:
+				p.burst(Particles.Kind.MAGIC, x, y, 140, 30, amount);
+				break;
+			case HERBLORE:
+				p.burst(Particles.Kind.BUBBLE, x, y, 75, 30, amount);
+				break;
+			case FARMING:
+			case HUNTER:
+				p.burst(Particles.Kind.LEAF, x, y, 40, 12, amount);
+				p.burst(Particles.Kind.DUST, x, y, 20, 8, amount);
+				break;
+			case CONSTRUCTION:
+			case AGILITY:
+				p.burst(Particles.Kind.DUST, x, y, 20, 14, amount);
+				p.burst(Particles.Kind.GLINT, at.getX(), at.getY(), 60, 12, amount);
+				break;
+			default:
+				p.burst(Particles.Kind.GLINT, at.getX(), at.getY(), 90, 16, amount);
+				break;
+		}
+		if (config.itemPops())
+		{
+			overlay.addPop(new EffectsOverlay.Pop(-1, "Rare moment!", at.getX(), at.getY(), plane, now + 0.05));
+		}
+		rareCount++;
+		List<RareLog.Achievement> unlocked = rareLog.record(activity.skillName(), itemName, System.currentTimeMillis());
+		if (rareProfile != null)
+		{
+			configManager.setRSProfileConfiguration(ImmersiveSkillingConfig.GROUP, RARE_LOG_KEY, rareLog.save());
+		}
+		for (int i = 0; i < unlocked.size(); i++)
+		{
+			// After the "Rare moment!" pop has risen out of the way.
+			overlay.addPop(new EffectsOverlay.Pop(-1, "Achievement: " + unlocked.get(i).getTitle(), at.getX(), at.getY(), plane,
+				now + 1.0 + i * 1.2));
+		}
+		refreshPanel();
+	}
+
+	/** The account setting the rare moments log is saved under. */
+	static final String RARE_LOG_KEY = "rareLog";
+
+	/**
+	 * WHAT: Loads the rare moments log when the account changes.
+	 * WHY: Each account has its own golden moments and achievements.
+	 * PRE: Client thread; called every tick while logged in.
+	 * POST: The log is the current account's.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void syncRareLog()
+	{
+		String key = configManager.getRSProfileKey();
+		if (key != null && !key.equals(rareProfile))
+		{
+			rareProfile = key;
+			rareLog = RareLog.load(configManager.getRSProfileConfiguration(ImmersiveSkillingConfig.GROUP, RARE_LOG_KEY));
+			refreshPanel();
+		}
+	}
+
+	RareLog getRareLog()
+	{
+		return rareLog;
+	}
+
+	/**
+	 * WHAT: Plays a preview that's always a rare moment, for the last skill you did.
+	 * WHY: So you can see one without waiting for the 1 in 100.
+	 * PRE: Any thread.
+	 * POST: The next effect is rare.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void previewRare()
+	{
+		forceRare = true;
+		Activity last = lastActivity;
+		preview(last != null ? last : Activity.WOODCUTTING);
+	}
+
+	int getRareCount()
+	{
+		return rareCount;
 	}
 
 	/**

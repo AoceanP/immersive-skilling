@@ -404,6 +404,86 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void rareItemsTurnGold()
+	{
+		// Any colour becomes gold, keeping light and shade: darker in stays darker out.
+		short darkRed = HeatColor.pack(0, 7, 20);
+		short paleBlue = HeatColor.pack(40, 3, 100);
+		for (short c : new short[]{darkRed, paleBlue})
+		{
+			int g = HeatColor.gold(c) & 0xFFFF;
+			assertEquals(HeatColor.GOLD_HUE, HeatColor.hue(g));
+			assertEquals(HeatColor.GOLD_SATURATION, HeatColor.saturation(g));
+		}
+		assertTrue(HeatColor.lightness(HeatColor.gold(darkRed)) < HeatColor.lightness(HeatColor.gold(paleBlue)));
+	}
+
+	@Test
+	public void rareMomentsAreOneIn512ByDefault()
+	{
+		ImmersiveSkillingConfig c = new ImmersiveSkillingConfig()
+		{
+		};
+		assertTrue(c.rareMoments());
+		assertEquals(512, c.rareChance().getOdds());
+		assertEquals("1 in 512", c.rareChance().toString());
+	}
+
+	@Test
+	public void rareLogUnlocksAchievements()
+	{
+		RareLog log = new RareLog();
+		assertEquals(java.util.Collections.singletonList(RareLog.Achievement.FIRST_GLEAM), log.record("Woodcutting", "Yew logs", 1));
+		for (int i = 0; i < 3; i++)
+		{
+			assertTrue(log.record("Woodcutting", "Yew logs", 2 + i).isEmpty());
+		}
+		assertEquals(java.util.Collections.singletonList(RareLog.Achievement.LUCKY_FIVE), log.record("Fishing", "Raw lobster", 9));
+		assertEquals(2, log.skills());
+		assertEquals(4, log.count("Woodcutting"));
+		assertEquals("Newest first", "Raw lobster", log.recent().get(0).item);
+		assertEquals(RareLog.RECENT, log.recent().size());
+		for (String skill : new String[]{"Mining", "Prayer", "Magic"})
+		{
+			log.record(skill, "x", 20);
+		}
+		assertTrue(log.has(RareLog.Achievement.ALL_ROUNDER));
+		assertFalse(log.has(RareLog.Achievement.GILDED_HANDS));
+		assertEquals(5, RareLog.Achievement.GILDED_HANDS.progress(log.total(), log.skills()));
+	}
+
+	@Test
+	public void rareLogSurvivesSavingAndDamage()
+	{
+		RareLog log = new RareLog();
+		log.record("Woodcutting", "Yew logs", 1730000000000L);
+		log.record("Smithing", "Steel; platebody|odd", 1730000001000L);
+		RareLog back = RareLog.load(log.save());
+		assertEquals(2, back.total());
+		assertEquals(1, back.count("Smithing"));
+		assertEquals("Odd characters can't break the line", "Steel  platebody odd", back.recent().get(0).item);
+		assertEquals(1730000001000L, back.recent().get(0).time);
+		// Damaged or missing text never throws.
+		assertEquals(0, RareLog.load(null).total());
+		assertEquals(0, RareLog.load("").total());
+		assertEquals(3, RareLog.load("Mining:3,Bad:x,:4;nope|Mining").total());
+	}
+
+	@Test
+	public void smeltingCountsAsSmithingAndAlchingAsMagic()
+	{
+		assertEquals("Smithing", Activity.SMELTING.skillName());
+		assertEquals("Magic", Activity.ALCHING.skillName());
+		assertEquals("Woodcutting", Activity.WOODCUTTING.skillName());
+		java.util.Set<String> skills = new HashSet<>();
+		for (Activity a : Activity.values())
+		{
+			skills.add(a.skillName());
+		}
+		assertEquals("Every skill with a rare moment, counted once", RareLog.SKILLS, skills.size());
+	}
+
+	@Test
 	public void ripplesAndGlowsKeepTheirColour()
 	{
 		Particles p = new Particles(2);

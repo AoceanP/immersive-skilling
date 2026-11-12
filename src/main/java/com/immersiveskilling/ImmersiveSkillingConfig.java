@@ -67,6 +67,31 @@ public interface ImmersiveSkillingConfig extends Config
 		}
 	}
 
+	enum RareChance
+	{
+		ONE_IN_128("1 in 128", 128), ONE_IN_512("1 in 512", 512), ONE_IN_1024("1 in 1,024", 1024);
+
+		private final String label;
+		private final int odds;
+
+		RareChance(String label, int odds)
+		{
+			this.label = label;
+			this.odds = odds;
+		}
+
+		public int getOdds()
+		{
+			return odds;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
+	}
+
 	enum Amount
 	{
 		SUBTLE("Subtle", 0.5), NORMAL("Normal", 1.0), LOTS("Lots", 1.8);
@@ -157,6 +182,9 @@ public interface ImmersiveSkillingConfig extends Config
 
 	@ConfigSection(name = "Construction", description = "The plank flying into place, dust and sparks", position = 15)
 	String constructionSection = "construction";
+
+	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 16)
+	String rareSection = "rare";
 
 	@ConfigSection(name = "General", description = "Shared options", position = 17)
 	String generalSection = "general";
@@ -387,6 +415,18 @@ public interface ImmersiveSkillingConfig extends Config
 	default boolean buildDust()
 	{
 		return true;
+	}
+
+	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 38)
+	default boolean rareMoments()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "rareChance", name = "How rare", description = "The chance of a rare moment for each item or action", section = rareSection, position = 39)
+	default RareChance rareChance()
+	{
+		return RareChance.ONE_IN_512;
 	}
 
 	// The last item you got, so a log basket, fish barrel or bag still gets effects.

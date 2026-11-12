@@ -76,6 +76,19 @@ enum Activity
 	}
 
 	/**
+	 * WHAT: The skill this activity trains, for the rare moments log.
+	 * WHY: Smelting and Smithing are both Smithing; Alching is Magic.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: the skill's name
+	 * THROWS: Nothing.
+	 */
+	String skillName()
+	{
+		return this == SMELTING ? "Smithing" : this == ALCHING ? "Magic" : displayName;
+	}
+
+	/**
 	 * WHAT: Works out which activity made an item: the skill that gave XP in the same tick, the
 	 * item's name and what you're standing next to.
 	 * WHY: XP alone isn't enough (Smithing covers both the furnace and the anvil), and an item

@@ -188,6 +188,8 @@ class ImmersiveSkillingPanel extends PluginPanel
 			row("Plank flight", "plankFlight", config::plankFlight),
 			row("Dust and sparks", "buildDust", config::buildDust)));
 
+		stack.add(rareCard());
+
 		RoundPanel general = card();
 		general.add(bold("General", TEXT));
 		general.add(row("Item pops", "itemPops", config::itemPops));
@@ -320,6 +322,71 @@ class ImmersiveSkillingPanel extends PluginPanel
 		return fold(title, what, body);
 	}
 
+	/**
+	 * WHAT: The Rare moments card: the switch and chance, your totals, the achievements with
+	 * their progress, the latest golden items, and a preview button.
+	 * WHY: The log gives the rare moments a home and something to chase.
+	 * PRE: Swing thread.
+	 * POST: The card is built folded; refreshers keep it up to date.
+	 * RETURN: the card
+	 * THROWS: Nothing.
+	 */
+	private RoundPanel rareCard()
+	{
+		JLabel totals = small("", MUTED);
+		JLabel skills = small("", MUTED);
+		JPanel goals = new JPanel(new DynamicGridLayout(0, 1, 0, 2));
+		goals.setOpaque(false);
+		List<Runnable> goalRefreshers = new ArrayList<>();
+		for (RareLog.Achievement a : RareLog.Achievement.values())
+		{
+			JPanel r = new JPanel(new BorderLayout(6, 0));
+			r.setOpaque(false);
+			JLabel name = small(a.getTitle(), SUBTLE);
+			name.setToolTipText(a.getDescription());
+			JLabel progress = small("", SUBTLE);
+			r.add(name, BorderLayout.CENTER);
+			r.add(progress, BorderLayout.EAST);
+			goals.add(r);
+			goalRefreshers.add(() ->
+			{
+				RareLog log = plugin.getRareLog();
+				boolean done = log.has(a);
+				name.setForeground(done ? GREEN : MUTED);
+				progress.setText(done ? "Done" : a.progress(log.total(), log.skills()) + " / " + a.getTarget());
+				progress.setForeground(done ? GREEN : SUBTLE);
+			});
+		}
+		JLabel latestTitle = small("Latest golden items", TEXT);
+		JPanel latest = new JPanel(new DynamicGridLayout(0, 1, 0, 2));
+		latest.setOpaque(false);
+		JLabel[] lines = new JLabel[RareLog.RECENT];
+		for (int i = 0; i < lines.length; i++)
+		{
+			lines[i] = small("", MUTED);
+			latest.add(lines[i]);
+		}
+		refreshers.add(() ->
+		{
+			RareLog log = plugin.getRareLog();
+			totals.setText("Total " + log.total() + "   This session " + plugin.getRareCount());
+			skills.setText("Skills " + log.skills() + " / " + RareLog.SKILLS);
+			goalRefreshers.forEach(Runnable::run);
+			List<RareLog.Entry> recent = log.recent();
+			for (int i = 0; i < lines.length; i++)
+			{
+				RareLog.Entry e = i < recent.size() ? recent.get(i) : null;
+				lines[i].setText(e == null ? (i == 0 ? "None yet. Keep skilling!" : "") : e.item + " (" + e.skill + ")");
+			}
+		});
+		return foldWith("Rare moments", "Golden items, and goals",
+			() -> plugin.getRareLog().total() + " found",
+			row("Rare moments", "rareMoments", config::rareMoments),
+			segmented("How rare", "rareChance", ImmersiveSkillingConfig.RareChance.values(), config::rareChance),
+			totals, skills, small("Achievements", TEXT), goals, latestTitle, latest,
+			button("Preview a rare one", "Plays a rare moment for the last skill you did", plugin::previewRare));
+	}
+
 	private RoundPanel metalCard()
 	{
 		JPanel previews = new JPanel(new GridLayout(1, 2, 4, 0));
@@ -349,7 +416,7 @@ class ImmersiveSkillingPanel extends PluginPanel
 
 	/**
 	 * WHAT: A folding card whose header shows a custom status instead of how many switches are on.
-	 * WHY: Lets a card show its own status in place of the usual count.
+	 * WHY: The Rare moments card's header says how many golden items you've found.
 	 * PRE: Swing thread. status may be null for the usual "2 of 2 on".
 	 * POST: The card is built folded.
 	 * RETURN: the card

@@ -40,6 +40,9 @@ final class HeatColor
 	static final int HOT_SATURATION = 7;
 	/** Hot metal is bright: lightness never drops below this when fully hot. */
 	static final int HOT_MIN_LIGHTNESS = 70;
+	/** Gold in the game's hue wheel, a little past orange towards yellow. */
+	static final int GOLD_HUE = 8;
+	static final int GOLD_SATURATION = 6;
 
 	private HeatColor()
 	{
@@ -63,6 +66,22 @@ final class HeatColor
 	static short pack(int hue, int saturation, int lightness)
 	{
 		return (short) (((hue & 0x3F) << 10) | ((saturation & 0x7) << 7) | (lightness & 0x7F));
+	}
+
+	/**
+	 * WHAT: The colour turned to polished gold, keeping its light and shade.
+	 * WHY: A rare moment's item turns golden, a little trophy in your pile.
+	 * PRE: color is the game's packed HSL.
+	 * POST: Nothing changes.
+	 * RETURN: the golden colour
+	 * THROWS: Nothing.
+	 */
+	static short gold(short color)
+	{
+		// Keep the model's shading, squeezed into a bright band, so it reads as polished gold.
+		int light = lightness(color & 0xFFFF);
+		int goldLight = Math.max(40, Math.min(118, (int) Math.round(light * 0.6 + 45)));
+		return pack(GOLD_HUE, GOLD_SATURATION, goldLight);
 	}
 
 	/**

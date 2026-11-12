@@ -97,6 +97,8 @@ final class Props
 		int shownSize = -1;
 		// When something lands on the pile, every item already on it hops a little.
 		double nudgeStart = -1;
+		// A rare moment's item: drawn in gold for as long as it's shown.
+		boolean golden;
 		// Flights still to come, each {start, x, y, z, peak, duration}: e.g. into your pack.
 		final ArrayDeque<double[]> legs = new ArrayDeque<>();
 
@@ -113,6 +115,7 @@ final class Props
 	private final List<Prop> props = new ArrayList<>();
 	private final Map<String, Model> modelCache = new HashMap<>();
 	private int view = -1;
+	private boolean golden;
 
 	Props(Client client)
 	{
@@ -137,6 +140,19 @@ final class Props
 		return view;
 	}
 
+	/**
+	 * WHAT: Whether props launched from now on are golden.
+	 * WHY: During a rare moment the item itself turns gold, in flight, in the pile, into your pack.
+	 * PRE: Client thread.
+	 * POST: New props take this setting; it only shows on props sized with resize.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void setGolden(boolean golden)
+	{
+		this.golden = golden;
+	}
+
 	int count(Group group)
 	{
 		int n = 0;
@@ -157,7 +173,7 @@ final class Props
 
 	/**
 	 * WHAT: The model for an item, scaled, and heated by a step (0 is normal, HEAT_STEPS is
-	 * fully hot). Models are made once and reused.
+	 * fully hot, -1 is gold). Models are made once and reused.
 	 * WHY: Loading and lighting a model is the costly part; props reuse the same few models.
 	 * PRE: Client thread. scale is 128 for the item's normal size.
 	 * POST: The model may be added to the cache.
@@ -192,7 +208,16 @@ final class Props
 				data.recolor(from[i], to[i]);
 			}
 		}
-		if (heatStep > 0)
+		if (heatStep < 0)
+		{
+			// Gold, for a rare moment.
+			short[] faces = data.getFaceColors();
+			for (int i = 0; i < faces.length; i++)
+			{
+				faces[i] = HeatColor.gold(faces[i]);
+			}
+		}
+		else if (heatStep > 0)
 		{
 			// Change each face directly, so one colour's new value is never re-heated as another.
 			short[] faces = data.getFaceColors();
@@ -230,6 +255,7 @@ final class Props
 		object.setModel(model);
 		object.setOrientation(orientation);
 		Prop p = new Prop(object, group, plane, view);
+		p.golden = golden;
 		p.fromX = fromX;
 		p.fromY = fromY;
 		p.fromZ = fromZ;
@@ -468,7 +494,7 @@ final class Props
 				if (step != p.shownSize)
 				{
 					p.shownSize = step;
-					Model m = step <= 0 ? null : itemModel(p.itemId, Math.max(16, p.scale * step / 8), 0);
+					Model m = step <= 0 ? null : itemModel(p.itemId, Math.max(16, p.scale * step / 8), p.golden ? -1 : 0);
 					if (m != null)
 					{
 						p.object.setModel(m);

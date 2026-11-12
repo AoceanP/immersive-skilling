@@ -32,6 +32,12 @@ Each item you get also pops up with how many you got and its name, such as "+15 
 - **Ingredients go in first:** bars fly from you onto the anvil, the herb and vial into the potion, the logs under your knife, the gem under your chisel. Then the product appears.
 - **Into your pack:** finished goods don't just vanish. The smithed item and the bar cool, then fly to you; fletched, crafted and Herblore items spin to a stop, then fly to you; runes hang in a ring over the altar, then stream to you one by one; alch coins bounce, then get swept up.
 
+## Rare moments
+
+About 1 in 512 items or actions (or 1 in 128, or 1 in 1,024) is a **rare moment**: the item turns gold and a flourish of light plays, with a twist for each skill: a burst of leaves, a big splash, a fountain of sparks, the fire roaring up, light pouring onto the altar. A golden log, ore or catch stays golden in your pile until it clears. It's purely for fun: nothing in the game changes, and only you see it. **Preview a rare one** shows you one right away.
+
+Each account keeps a **rare moments log** in the sidebar: your total, how many skills you've had one in, the latest golden items, and achievements to chase: First gleam, Lucky five, All-rounder (5 skills), Golden touch (25), Gilded hands (10 skills), Midas (100) and Gilded everything (every skill). Each new achievement pops up over you as you earn it.
+
 ## Piles
 
 - **Each skill piles its own way:** logs in a crisscross firewood stack (4, 3, 2, 1 for a big pile), ore and harvests in a rounded heap, catches nested in a basket that pops into place.
