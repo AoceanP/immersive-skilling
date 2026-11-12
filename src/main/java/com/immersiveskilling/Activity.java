@@ -43,7 +43,14 @@ enum Activity
 	MINING("Mining"),
 	SMELTING("Smelting"),
 	SMITHING("Smithing"),
-	FLETCHING("Fletching");
+	FLETCHING("Fletching"),
+	FIREMAKING("Firemaking"),
+	RUNECRAFT("Runecraft"),
+	THIEVING("Thieving"),
+	HERBLORE("Herblore"),
+	CRAFTING("Crafting"),
+	PRAYER("Prayer"),
+	ALCHING("Alching");
 
 	/** Fish that don't start with "raw": eels, minnows and the aerial fishing catches. */
 	private static final java.util.Set<String> OTHER_CATCHES = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -100,9 +107,49 @@ enum Activity
 				return nearAnvil && !name.endsWith(" bar") ? SMITHING : null;
 			case FLETCHING:
 				return FLETCHING;
+			case RUNECRAFT:
+				return name.endsWith(" rune") ? RUNECRAFT : null;
+			case THIEVING:
+				// Coins, seeds, stall goods: whatever you stole.
+				return THIEVING;
+			case HERBLORE:
+				return HERBLORE;
+			case CRAFTING:
+				return CRAFTING;
+			case MAGIC:
+				// Only alching pays out coins for Magic XP; other spells are left alone.
+				return name.equals("coins") ? ALCHING : null;
 			default:
 				return null;
 		}
+	}
+
+	/**
+	 * WHAT: Works out which activity used up an item: Firemaking burns logs and roots, Prayer
+	 * buries or offers bones and scatters ashes, all without giving you anything back.
+	 * WHY: Every other activity is recognised by what arrives; these only by what leaves.
+	 * PRE: skill is the skill that gained XP this tick, or null; itemName may be null.
+	 * POST: Nothing changes.
+	 * RETURN: FIREMAKING for a burnt log, root or kindling, PRAYER for bones or ashes,
+	 * otherwise null
+	 * THROWS: Nothing.
+	 */
+	static Activity classifyUsed(Skill skill, String itemName)
+	{
+		if (itemName == null)
+		{
+			return null;
+		}
+		String name = itemName.toLowerCase(Locale.ROOT);
+		if (skill == Skill.FIREMAKING)
+		{
+			return name.contains("log") || name.contains("root") || name.contains("kindling") ? FIREMAKING : null;
+		}
+		if (skill == Skill.PRAYER)
+		{
+			return name.contains("bones") || name.endsWith("ashes") ? PRAYER : null;
+		}
+		return null;
 	}
 
 	/**

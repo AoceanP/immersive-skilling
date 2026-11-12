@@ -31,7 +31,7 @@ import java.util.Random;
 
 /**
  * WHAT: Small particles in the world: wood chips, sparks, dust, splash droplets, embers,
- * shavings, stone chips, falling leaves, ripples and glows. Each has a position in the game's local units plus a height, a velocity, gravity,
+ * shavings, potion bubbles, glints and herb leaves. Each has a position in the game's local units plus a height, a velocity, gravity,
  * and a lifetime.
  * WHY: The overlay draws these every frame, so effects move smoothly at any frame rate. Only the
  * client thread touches them (events and overlay rendering both run there).
@@ -47,7 +47,7 @@ final class Particles
 
 	enum Kind
 	{
-		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING, STONE, FALLING_LEAF, RIPPLE, GLOW
+		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING, BUBBLE, GLINT, LEAF, MOTE, MAGIC, STONE, FALLING_LEAF, RIPPLE, GLOW
 	}
 
 	static final class Particle
@@ -154,7 +154,7 @@ final class Particles
 	 */
 	/**
 	 * WHAT: Adds one still particle with its own colour and size: a ripple ring or a glow.
-	 * WHY: Ripples on the water and flashes of light at a furnace or anvil aren't sprays;
+	 * WHY: Ripples on the water and flashes of light at a fire, altar or anvil aren't sprays;
 	 * each is one shape that grows and fades where it is.
 	 * PRE: rgb is 0xRRGGBB; size is the radius in local units; life is in seconds.
 	 * POST: One particle is added, unless the limit is reached.
@@ -219,6 +219,44 @@ final class Particles
 					gravity = 0;
 					life = 1.2 + random.nextDouble() * 0.8;
 					size = 1.8f;
+					break;
+				case BUBBLE:
+					// Rise slowly out of the vial and pop.
+					speed = 4 + random.nextDouble() * 10;
+					up = 35 + random.nextDouble() * 40;
+					gravity = 0;
+					life = 0.8 + random.nextDouble() * 0.6;
+					size = 2.5f;
+					break;
+				case GLINT:
+					speed = 30 + random.nextDouble() * 50;
+					up = 70 + random.nextDouble() * 80;
+					gravity = 160;
+					life = 0.5 + random.nextDouble() * 0.4;
+					size = 3f;
+					break;
+				case LEAF:
+					speed = 40 + random.nextDouble() * 50;
+					up = 80 + random.nextDouble() * 60;
+					gravity = 380;
+					life = 1.0 + random.nextDouble() * 0.4;
+					size = 3f;
+					break;
+				case MOTE:
+					// Soft light drifting slowly up, for Prayer.
+					speed = 6 + random.nextDouble() * 12;
+					up = 40 + random.nextDouble() * 35;
+					gravity = 0;
+					life = 1.4 + random.nextDouble() * 0.8;
+					size = 3f;
+					break;
+				case MAGIC:
+					// A quick green flash outwards, for alching.
+					speed = 70 + random.nextDouble() * 90;
+					up = 40 + random.nextDouble() * 90;
+					gravity = 60;
+					life = 0.35 + random.nextDouble() * 0.3;
+					size = 2f;
 					break;
 				case STONE:
 					// Rock chips: heavier and greyer than wood chips.

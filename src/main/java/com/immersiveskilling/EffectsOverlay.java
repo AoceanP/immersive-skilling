@@ -53,8 +53,8 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * WHAT: Draws the particles (chips, sparks, dust, droplets, embers, shavings, stone chips,
- * leaves, ripples and glows) and the "+N" item pops on the game view, every frame.
+ * WHAT: Draws the particles (chips, sparks, dust, droplets, embers, shavings, bubbles, glints
+ * and leaves) and the "+N" item pops on the game view, every frame.
  * WHY: Small fast effects look best as a smooth 2D layer on top of the scene; they're drawn at
  * world positions, so they stay in place when the camera moves.
  * PRE: Overlays render on the client thread, the same thread that adds particles and pops.
@@ -242,6 +242,51 @@ class EffectsOverlay extends Overlay
 				g.fill(new Ellipse2D.Double(x - 1, y - 1, 2, 2));
 				break;
 			}
+			case BUBBLE:
+				g.setStroke(new BasicStroke(1f));
+				g.setColor(new Color(190, 240, 210, (int) (200 * alpha)));
+				g.draw(new Ellipse2D.Double(x - p.size, y - p.size, p.size * 2, p.size * 2));
+				g.setColor(new Color(255, 255, 255, (int) (180 * alpha)));
+				g.fill(new Ellipse2D.Double(x - p.size * 0.5, y - p.size * 0.6, 1.2, 1.2));
+				break;
+			case GLINT:
+			{
+				// A four-point twinkle that grows and shrinks.
+				double r = 1 + p.size * Math.sin(life * Math.PI);
+				g.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+				g.setColor(new Color(255, 236, 170, (int) (230 * alpha)));
+				g.draw(new Line2D.Double(x - r, y, x + r, y));
+				g.draw(new Line2D.Double(x, y - r, x, y + r));
+				break;
+			}
+			case LEAF:
+			{
+				AffineTransform t = g.getTransform();
+				g.translate(x, y);
+				g.rotate(p.age * p.spin);
+				g.setColor(new Color(110, 170, 80, (int) (230 * alpha)));
+				g.fill(new Ellipse2D.Double(-3, -1.3, 6, 2.6));
+				g.setTransform(t);
+				break;
+			}
+			case MOTE:
+			{
+				// A soft halo with a bright core, breathing as it rises.
+				float glow = (float) Math.sin(life * Math.PI);
+				g.setPaint(new RadialGradientPaint(new Point2D.Double(x, y), 6f, new float[]{0f, 1f},
+					new Color[]{new Color(255, 240, 190, (int) (150 * glow)), new Color(255, 240, 190, 0)}));
+				g.fill(new Ellipse2D.Double(x - 6, y - 6, 12, 12));
+				g.setColor(new Color(255, 255, 235, (int) (230 * glow)));
+				g.fill(new Ellipse2D.Double(x - 1.2, y - 1.2, 2.4, 2.4));
+				break;
+			}
+			case MAGIC:
+				g.setPaint(new RadialGradientPaint(new Point2D.Double(x, y), 4f, new float[]{0f, 1f},
+					new Color[]{new Color(120, 255, 130, (int) (170 * alpha)), new Color(120, 255, 130, 0)}));
+				g.fill(new Ellipse2D.Double(x - 4, y - 4, 8, 8));
+				g.setColor(new Color(220, 255, 220, (int) (240 * alpha)));
+				g.fill(new Ellipse2D.Double(x - 1, y - 1, 2, 2));
+				break;
 			case STONE:
 			{
 				AffineTransform t = g.getTransform();

@@ -75,7 +75,8 @@ import net.runelite.client.util.ImageUtil;
 /**
  * WHAT: Immersive Skilling: purely visual effects while you skill. Logs pile up beside you, your
  * catch flies into a basket, ore bounces out of the rock, bars come out of the furnace red-hot,
- * smithed items cool on the anvil, and the item you fletch appears in front of you.
+ * smithed items cool on the anvil, the item you fletch appears in front of you, logs land on the
+ * fire, runes burst from the altar, loot flies to you and potions bubble.
  * WHY: Makes skilling feel more alive. Everything is client-side and seen only by you; nothing
  * changes how the game plays and nothing shows information you don't already have.
  * PRE: RuneLite loads it as a plugin. Game events and rendering run on the client thread.
@@ -85,14 +86,15 @@ import net.runelite.client.util.ImageUtil;
  */
 @PluginDescriptor(
 	name = "Immersive Skilling",
-	description = "Visual only: log piles, catch baskets, ore chunks, red-hot bars and items, sparks and pops while you skill",
-	tags = {"immersive", "visual", "cosmetic", "woodcutting", "fishing", "mining", "smithing", "smelting", "fletching", "skilling"}
+	description = "Visual only: log piles, catch baskets, ore chunks, red-hot metal, logs on the fire, rune bursts, flying loot, bubbling potions and pops while you skill",
+	tags = {"immersive", "visual", "cosmetic", "woodcutting", "fishing", "mining", "smithing", "smelting", "fletching",
+		"firemaking", "runecraft", "thieving", "herblore", "skilling"}
 )
 public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.1.1";
+	static final String VERSION = "1.1.2";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -165,20 +167,25 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private volatile int statusCount;
 	private volatile int statusCap;
 
-	/** An item that arrived in the inventory, with what left it in the same change. */
+	/**
+	 * An item that arrived in the inventory, with what left it in the same change. When nothing
+	 * arrived, each item that left is recorded with used set, for Firemaking.
+	 */
 	static final class Gain
 	{
 		final int itemId;
 		final int quantity;
 		final int tick;
 		final List<Integer> lost;
+		final boolean used;
 
-		Gain(int itemId, int quantity, int tick, List<Integer> lost)
+		Gain(int itemId, int quantity, int tick, List<Integer> lost, boolean used)
 		{
 			this.itemId = itemId;
 			this.quantity = quantity;
 			this.tick = tick;
 			this.lost = lost;
+			this.used = used;
 		}
 	}
 
@@ -307,12 +314,22 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 		}
 		int tick = client.getTickCount();
+		boolean anyGained = false;
 		for (Map.Entry<Integer, Integer> e : now.entrySet())
 		{
 			int gained = e.getValue() - before.getOrDefault(e.getKey(), 0);
 			if (gained > 0)
 			{
-				pending.add(new Gain(e.getKey(), gained, tick, lost));
+				pending.add(new Gain(e.getKey(), gained, tick, lost, false));
+				anyGained = true;
+			}
+		}
+		if (!anyGained)
+		{
+			// Nothing arrived: maybe a log went onto a fire.
+			for (int id : lost)
+			{
+				pending.add(new Gain(id, before.get(id) - now.getOrDefault(id, 0), tick, Collections.emptyList(), true));
 			}
 		}
 		match();
@@ -462,12 +479,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 			String name = client.getItemDefinition(gain.itemId).getName();
 			LocalPoint furnace = null;
 			LocalPoint anvil = null;
-			if (skill == Skill.SMITHING)
+			if (skill == Skill.SMITHING && !gain.used)
 			{
 				furnace = findObject("furnace");
 				anvil = findObject("anvil");
 			}
-			Activity activity = Activity.classify(skill, name, furnace != null, anvil != null);
+			Activity activity = gain.used ? Activity.classifyUsed(skill, name)
+				: Activity.classify(skill, name, furnace != null, anvil != null);
 			if (activity == null)
 			{
 				continue;
@@ -483,8 +501,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	}
 
 	/**
-	 * WHAT: Where an effect comes from: the furnace or the anvil.
-	 * WHY: Bars come out of the furnace you use; items take shape on the anvil.
+	 * WHAT: Where an effect comes from: the furnace, anvil, fire, altar, or who you're stealing from.
+	 * WHY: Bars come out of the furnace you use, runes out of the altar, loot out of the pocket.
 	 * PRE: Client thread.
 	 * POST: Nothing changes.
 	 * RETURN: the place, or null to use the tile in front of you
@@ -498,6 +516,26 @@ public class ImmersiveSkillingPlugin extends Plugin
 				return furnace;
 			case SMITHING:
 				return anvil;
+			case FIREMAKING:
+				return findObject("fire", "brazier");
+			case RUNECRAFT:
+			case PRAYER:
+				// Bones go onto the altar beside you; with none, they're buried.
+				return findObject("altar");
+			case THIEVING:
+			{
+				Player player = client.getLocalPlayer();
+				Actor target = player == null ? null : player.getInteracting();
+				if (target == null)
+				{
+					// Stalls and chests aren't someone you interact with; find the one beside you.
+					GameObject stall = workObject(player.getLocalLocation(), "steal", "search", "pick");
+					return stall != null ? stall.getLocalLocation() : findObject("stall", "chest");
+				}
+				// A point on another worldview (a boat and the shore) would land in the wrong place.
+				WorldView targetView = target.getWorldView();
+				return targetView == null || targetView.getId() != viewOf(player).getId() ? null : target.getLocalLocation();
+			}
 			default:
 				return null;
 		}
@@ -540,7 +578,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	static boolean isShown(Skill skill)
 	{
 		return skill == Skill.WOODCUTTING || skill == Skill.FISHING || skill == Skill.MINING || skill == Skill.SMITHING
-			|| skill == Skill.FLETCHING;
+			|| skill == Skill.FLETCHING || skill == Skill.FIREMAKING || skill == Skill.RUNECRAFT || skill == Skill.THIEVING
+			|| skill == Skill.HERBLORE || skill == Skill.CRAFTING || skill == Skill.PRAYER || skill == Skill.MAGIC;
 	}
 
 	private static Map<Integer, Integer> counts(ItemContainer container)
@@ -650,8 +689,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	/**
 	 * WHAT: Plays the effect for one item made by an activity.
 	 * WHY: The heart of the plugin: decides which props fly where and which particles burst.
-	 * PRE: Client thread. station is the furnace or anvil, or null.
-	 * quantity is how many arrived, for the pop.
+	 * PRE: Client thread. station is the furnace, anvil, fire, altar or loot source, or null.
+	 * quantity is how many arrived (or were used), for the pop.
 	 * POST: Props and particles are added; the panel status is updated.
 	 * RETURN: Nothing.
 	 * THROWS: Nothing.
@@ -750,6 +789,30 @@ public class ImmersiveSkillingPlugin extends Plugin
 				smith(itemId, station, tx, ty, plane, now + d, amount);
 			}
 				break;
+			case FIREMAKING:
+				firemake(itemId, station, at, fx, fy, plane, now, amount);
+				break;
+			case RUNECRAFT:
+				runecraft(itemId, quantity, station, tx, ty, plane, now, amount);
+				break;
+			case THIEVING:
+				thieve(itemId, station, at, tx, ty, plane, now, amount);
+				break;
+			case HERBLORE:
+				// The herb and vial (or the unfinished potion and its secondary) go in first.
+				herblore(itemId, itemName, at, fx, fy, plane,
+					now + ingredients(lost, at, at.getX() + fx * 80, at.getY() + fy * 80, 60, plane, now), amount);
+				break;
+			case CRAFTING:
+				craft(itemId, itemName, at, fx, fy, plane,
+					now + ingredients(lost, at, at.getX() + fx * 80, at.getY() + fy * 80, 60, plane, now), amount);
+				break;
+			case PRAYER:
+				pray(itemId, itemName, station, at, fx, fy, plane, now, amount);
+				break;
+			case ALCHING:
+				alch(itemId, lost, at, plane, now, amount);
+				break;
 			default:
 				fletch(itemId, at, fx, fy, plane,
 					now + ingredients(lost, at, at.getX() + fx * 80, at.getY() + fy * 80, 60, plane, now), amount);
@@ -757,8 +820,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 		}
 		if (config.itemPops())
 		{
-			double popX = pileActivity == activity ? pileX : targetX;
-			double popY = pileActivity == activity ? pileY : targetY;
+			// Loot is shown over you, where it lands; the rest where it was made.
+			boolean overYou = activity == Activity.THIEVING || activity == Activity.ALCHING;
+			double popX = pileActivity == activity ? pileX : overYou ? at.getX() : targetX;
+			double popY = pileActivity == activity ? pileY : overYou ? at.getY() : targetY;
 			overlay.addPop(new EffectsOverlay.Pop(itemId, popText, popX, popY, plane, now));
 		}
 		updateStatus(activity);
@@ -1206,7 +1271,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	}
 
 	/**
-	 * WHAT: The pop's text, e.g. "+15 Arrow shaft".
+	 * WHAT: The pop's text: "+15 Arrow shaft", or "-1 Yew logs" for what you burnt or buried.
 	 * WHY: It used to say "+1" even when 15 arrived at once.
 	 * PRE: None.
 	 * POST: Nothing changes.
@@ -1215,11 +1280,360 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 */
 	static String popText(Activity activity, int quantity, String itemName)
 	{
-		return "+" + Math.max(1, quantity) + " " + itemName;
+		boolean usedUp = activity == Activity.FIREMAKING || activity == Activity.PRAYER;
+		return (usedUp ? "-" : "+") + Math.max(1, quantity) + " " + itemName;
+	}
+
+	/**
+	 * WHAT: Firemaking: the log arcs onto the fire and embers rise.
+	 * WHY: Lighting a fire was the one gathering-style skill with nothing to see.
+	 * PRE: Client thread. fire is the fire or brazier nearby, or null.
+	 * POST: A prop and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void firemake(int logId, LocalPoint fire, LocalPoint at, double fx, double fy, int plane, double now, double amount)
+	{
+		// A new fire lights on your own tile; a brazier or campfire is a tile or two away.
+		double x = fire != null ? fire.getX() : at.getX();
+		double y = fire != null ? fire.getY() : at.getY();
+		boolean onYourTile = Math.hypot(x - at.getX(), y - at.getY()) < TILE / 2.0;
+		double fromX = onYourTile ? at.getX() + fx * 90 : at.getX();
+		double fromY = onYourTile ? at.getY() + fy * 90 : at.getY();
+		if (config.tossedLog())
+		{
+			Props.Prop log = props.launch(props.itemModel(logId, 110, 0), Props.Group.FLOATING, plane, fromX, fromY, 70, x, y, 15, 70,
+				0.45, false, 0, now);
+			if (log != null)
+			{
+				log.spinPerSecond = 500;
+				log.expires = now + 0.5;
+				Props.resize(log, logId, 110, 0, 0.12);
+			}
+		}
+		if (config.fireEmbers())
+		{
+			overlay.getParticles().burst(Particles.Kind.EMBER, x, y, 40, 10, amount);
+			overlay.getParticles().burst(Particles.Kind.SPARK, x, y, 30, 6, amount);
+			// The fire flares as the log catches.
+			overlay.getParticles().single(Particles.Kind.GLOW, x, y, 50, 0xFF8A2A, 110, 0.8);
+		}
+		targetX = x;
+		targetY = y;
+	}
+
+	/**
+	 * WHAT: Runecraft: up to six of your new runes burst up out of the altar, with glints.
+	 * WHY: Crafting a whole inventory of runes happens in one tick and looked like nothing.
+	 * PRE: Client thread. altar is the altar nearby, or null.
+	 * POST: Props and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void runecraft(int runeId, int quantity, LocalPoint altar, double tx, double ty, int plane, double now, double amount)
+	{
+		double ax = altar != null ? altar.getX() : tx;
+		double ay = altar != null ? altar.getY() : ty;
+		if (config.runeBurst())
+		{
+			// Spread evenly around the altar, a moment apart; they fade as they land.
+			Model model = props.itemModel(runeId, 100, 0);
+			int n = Math.min(6, Math.max(1, quantity));
+			LocalPoint me = client.getLocalPlayer().getLocalLocation();
+			for (int i = 0; i < n; i++)
+			{
+				// Out of the altar into a ring hanging over it, then one by one into your pack.
+				double angle = i * Math.PI * 2 / n;
+				Props.Prop rune = props.launch(model, Props.Group.FLOATING, plane, ax, ay, 60, ax + Math.cos(angle) * 70,
+					ay + Math.sin(angle) * 70, 75, 60, 0.6, false, 0, now + i * 0.05);
+				if (rune != null)
+				{
+					rune.spinPerSecond = 600;
+					Props.then(rune, now + 0.95 + i * 0.07, me.getX(), me.getY(), 85, 25, 0.3);
+					rune.expires = now + 1.25 + i * 0.07;
+					Props.resize(rune, runeId, 100, 0.12, 0.15);
+				}
+			}
+		}
+		if (config.runeGlints())
+		{
+			overlay.getParticles().burst(Particles.Kind.GLINT, ax, ay, 80, 12, amount);
+			overlay.getParticles().single(Particles.Kind.GLOW, ax, ay, 70, 0xB070FF, 130, 0.9);
+			overlay.getParticles().single(Particles.Kind.RIPPLE, ax, ay, 0, 0xC8A0FF, 160, 0.9);
+		}
+		targetX = ax;
+		targetY = ay;
+	}
+
+	/**
+	 * WHAT: Thieving: what you stole flies from the pocket or stall to you, with glints.
+	 * WHY: Shows where the loot came from.
+	 * PRE: Client thread. source is who or what you're stealing from, or null for in front of you.
+	 * POST: A prop and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void thieve(int itemId, LocalPoint source, LocalPoint at, double tx, double ty, int plane, double now, double amount)
+	{
+		double sx = source != null ? source.getX() : tx;
+		double sy = source != null ? source.getY() : ty;
+		if (config.lootFlight())
+		{
+			Props.Prop loot = props.launch(props.itemModel(itemId, 110, 0), Props.Group.FLOATING, plane, sx, sy, 90, at.getX(),
+				at.getY(), 80, 60, 0.5, false, 0, now);
+			if (loot != null)
+			{
+				loot.spinPerSecond = 400;
+				loot.expires = now + 0.5;
+				Props.resize(loot, itemId, 110, 0.1, 0.12);
+			}
+		}
+		if (config.lootGlints())
+		{
+			overlay.getParticles().burst(Particles.Kind.GLINT, at.getX(), at.getY(), 90, 8, amount);
+			overlay.getParticles().single(Particles.Kind.GLOW, at.getX(), at.getY(), 90, 0xFFE08A, 45, 0.4);
+		}
+		targetX = sx;
+		targetY = sy;
+	}
+
+	/**
+	 * WHAT: Herblore: the potion or clean herb appears in front of you; potions bubble, herbs
+	 * shed a few leaves.
+	 * WHY: Mixing and cleaning had no feedback beyond the inventory.
+	 * PRE: Client thread.
+	 * POST: A prop and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void herblore(int itemId, String itemName, LocalPoint at, double fx, double fy, int plane, double now, double amount)
+	{
+		double x = at.getX() + fx * 80;
+		double y = at.getY() + fy * 80;
+		if (config.bubbles())
+		{
+			boolean potion = isPotion(itemName);
+			overlay.getParticles().burst(potion ? Particles.Kind.BUBBLE : Particles.Kind.LEAF, x, y, potion ? 75 : 70,
+				potion ? 10 : 6, amount);
+			if (potion)
+			{
+				overlay.getParticles().single(Particles.Kind.GLOW, x, y, 75, 0x8CF0A0, 50, 0.6);
+			}
+		}
+		if (config.herbItem())
+		{
+			Props.Prop item = props.launch(props.itemModel(itemId, 128, 0), Props.Group.FLOATING, plane, x, y, 55, x, y, 85, 0, 0.6,
+				false, 0, now);
+			if (item != null)
+			{
+				item.spinPerSecond = 900;
+				item.spinSettle = 0.45;
+				// Then into your pack: it flies to you and shrinks away.
+				Props.then(item, now + 1.15, at.getX(), at.getY(), 80, 30, 0.4);
+				item.expires = now + 1.55;
+				Props.resize(item, itemId, 128, 0.2, 0.2);
+			}
+		}
+		targetX = x;
+		targetY = y;
+	}
+
+	/**
+	 * WHAT: Crafting: the finished item rises in front of you; gems and jewellery glint, the
+	 * rest gives a puff of dust.
+	 * WHY: Cutting a gem or spinning a bowl had nothing to see beyond the inventory.
+	 * PRE: Client thread.
+	 * POST: A prop and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void craft(int itemId, String itemName, LocalPoint at, double fx, double fy, int plane, double now, double amount)
+	{
+		double x = at.getX() + fx * 80;
+		double y = at.getY() + fy * 80;
+		if (config.craftGlints())
+		{
+			boolean shiny = isShiny(itemName);
+			overlay.getParticles().burst(shiny ? Particles.Kind.GLINT : Particles.Kind.DUST, x, y, shiny ? 85 : 60,
+				shiny ? 10 : 4, amount);
+			if (shiny)
+			{
+				overlay.getParticles().single(Particles.Kind.GLOW, x, y, 80, 0xB4C8FF, 45, 0.6);
+			}
+		}
+		if (config.craftedItem())
+		{
+			Props.Prop item = props.launch(props.itemModel(itemId, 128, 0), Props.Group.FLOATING, plane, x, y, 55, x, y, 90, 0,
+				0.6, false, 0, now);
+			if (item != null)
+			{
+				item.spinPerSecond = 1100;
+				item.spinSettle = 0.5;
+				// Then into your pack: it flies to you and shrinks away.
+				Props.then(item, now + 1.15, at.getX(), at.getY(), 80, 30, 0.4);
+				item.expires = now + 1.55;
+				Props.resize(item, itemId, 128, 0.2, 0.2);
+			}
+		}
+		targetX = x;
+		targetY = y;
+	}
+
+	/**
+	 * WHAT: Whether a Crafting product shines: cut gems, jewellery, gold, silver and glass.
+	 * WHY: Those glint; leather, pottery and string get a puff of dust instead.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: true for shiny things
+	 * THROWS: Nothing.
+	 */
+	static boolean isShiny(String itemName)
+	{
+		String name = itemName == null ? "" : itemName.toLowerCase(java.util.Locale.ROOT);
+		if (name.startsWith("uncut "))
+		{
+			return false;
+		}
+		for (String word : SHINY)
+		{
+			if (name.contains(word))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static final String[] SHINY = {"opal", "jade", "topaz", "sapphire", "emerald", "ruby", "diamond", "dragonstone",
 		"onyx", "zenyte", "gold", "silver", "glass", "orb", "ring", "amulet", "necklace", "bracelet", "tiara"};
+
+	/**
+	 * WHAT: Prayer: the bone arcs onto the altar, or sinks into the ground when buried, and soft
+	 * light rises.
+	 * WHY: Offering a whole inventory of bones was the quietest training in the game.
+	 * PRE: Client thread. altar is the altar beside you, or null when burying.
+	 * POST: A prop and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void pray(int itemId, String itemName, LocalPoint altar, LocalPoint at, double fx, double fy, int plane, double now,
+		double amount)
+	{
+		boolean ashes = itemName != null && itemName.toLowerCase(java.util.Locale.ROOT).endsWith("ashes");
+		double x = altar != null ? altar.getX() : at.getX() + fx * 70;
+		double y = altar != null ? altar.getY() : at.getY() + fy * 70;
+		if (config.offeredBone() && !ashes)
+		{
+			Props.Prop bone = altar != null
+				? props.launch(props.itemModel(itemId, 110, 0), Props.Group.FLOATING, plane, at.getX(), at.getY(), 70, x, y, 65, 50,
+					0.45, false, 0, now)
+				: props.launch(props.itemModel(itemId, 110, 0), Props.Group.FLOATING, plane, x, y, 12, x, y, -30, 0, 0.9, false, 0,
+					now);
+			if (bone != null)
+			{
+				bone.expires = now + (altar != null ? 0.5 : 0.9);
+				Props.resize(bone, itemId, 110, 0.1, altar != null ? 0.12 : 0);
+			}
+		}
+		if (ashes && config.offeredBone())
+		{
+			overlay.getParticles().burst(Particles.Kind.DUST, x, y, 20, 6, amount);
+		}
+		if (config.prayerLight())
+		{
+			overlay.getParticles().single(Particles.Kind.GLOW, x, y, altar != null ? 70 : 20, 0xFFF0B0, altar != null ? 120 : 70, 1.0);
+			overlay.getParticles().burst(Particles.Kind.MOTE, x, y, altar != null ? 75 : 15, altar != null ? 12 : 8, amount);
+		}
+		targetX = x;
+		targetY = y;
+	}
+
+	/**
+	 * WHAT: Alching: the item vanishes above you in a green flash and coins burst out and fall.
+	 * WHY: High alching is clicked thousands of times; now each cast pays out visibly.
+	 * PRE: Client thread. lost holds what left the inventory, the alched item and its runes.
+	 * POST: Props and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void alch(int coinsId, List<Integer> lost, LocalPoint at, int plane, double now, double amount)
+	{
+		double x = at.getX();
+		double y = at.getY();
+		if (config.alchFlash())
+		{
+			int alched = alchedItem(lost);
+			if (alched > 0)
+			{
+				Props.Prop item = props.launch(props.itemModel(alched, 110, 0), Props.Group.FLOATING, plane, x, y, 120, x, y, 150, 0,
+					0.35, false, 0, now);
+				if (item != null)
+				{
+					item.spinPerSecond = 900;
+					item.expires = now + 0.35;
+					Props.resize(item, alched, 110, 0, 0.3);
+				}
+			}
+			overlay.getParticles().burst(Particles.Kind.MAGIC, x, y, 140, 16, amount);
+			overlay.getParticles().single(Particles.Kind.GLOW, x, y, 140, 0x78FF82, 90, 0.5);
+		}
+		if (config.alchCoins())
+		{
+			Model coin = props.itemModel(coinsId, 90, 0);
+			for (int i = 0; i < 5; i++)
+			{
+				double angle = i * Math.PI * 2 / 5 + 0.4;
+				double r = 45 + (i % 2) * 25;
+				Props.Prop c = props.launch(coin, Props.Group.FLOATING, plane, x, y, 140, x + Math.cos(angle) * r, y + Math.sin(angle) * r,
+					0, 40, 0.6, true, i * 400, now + 0.25 + i * 0.04);
+				if (c != null)
+				{
+					// They bounce where they land, then get swept into your pack.
+					Props.then(c, now + 1.25 + i * 0.06, x, y, 70, 30, 0.3);
+					c.expires = now + 1.55 + i * 0.06;
+					Props.resize(c, coinsId, 90, 0, 0.15);
+				}
+			}
+			overlay.getParticles().burst(Particles.Kind.GLINT, x, y, 40, 6, amount);
+		}
+		targetX = x;
+		targetY = y;
+	}
+
+	/**
+	 * WHAT: Which of the items that left was the one alched: the first that isn't a rune.
+	 * WHY: Casting uses up runes in the same tick as the item.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: its item id, or -1 if there isn't one
+	 * THROWS: Nothing.
+	 */
+	private int alchedItem(List<Integer> lost)
+	{
+		for (int id : lost)
+		{
+			String name = client.getItemDefinition(id).getName();
+			if (name != null && !name.toLowerCase(java.util.Locale.ROOT).endsWith(" rune"))
+			{
+				return id;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * WHAT: Whether a Herblore product is a potion (it bubbles) rather than a cleaned herb.
+	 * WHY: Potions are named with their doses, e.g. "Prayer potion(3)", or as a mix or brew.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: true for potions
+	 * THROWS: Nothing.
+	 */
+	static boolean isPotion(String itemName)
+	{
+		String name = itemName == null ? "" : itemName.toLowerCase(java.util.Locale.ROOT);
+		return name.contains("(") || name.contains("potion") || name.contains("mix") || name.contains("brew");
+	}
 
 	/**
 	 * WHAT: Small effects while you keep working: chips, sparks, splashes, embers, shavings.
@@ -1272,6 +1686,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 					particles.burst(Particles.Kind.SPARK, targetX, targetY, 60, 6, amount);
 					particles.burst(Particles.Kind.DUST, targetX, targetY, 50, 2, amount);
 					particles.burst(Particles.Kind.STONE, targetX, targetY, 55, 2, amount);
+				}
+				break;
+			case FIREMAKING:
+				if (config.fireEmbers())
+				{
+					// The fire you lit keeps sending up embers while you stand by it.
+					particles.burst(Particles.Kind.EMBER, targetX, targetY, 40, 3, amount);
 				}
 				break;
 			case SMELTING:
@@ -1333,6 +1754,27 @@ public class ImmersiveSkillingPlugin extends Plugin
 					break;
 				case SMITHING:
 					play(activity, ItemID.STEEL_PLATEBODY, "Steel platebody", Collections.emptyList(), null, 1);
+					break;
+				case FIREMAKING:
+					play(activity, ItemID.YEW_LOGS, "Yew logs", Collections.emptyList(), null, 1);
+					break;
+				case RUNECRAFT:
+					play(activity, ItemID.NATURERUNE, "Nature rune", Collections.emptyList(), null, 28);
+					break;
+				case THIEVING:
+					play(activity, ItemID.COINS, "Coins", Collections.emptyList(), null, 54);
+					break;
+				case HERBLORE:
+					play(activity, ItemID._4DOSEPRAYERRESTORE, "Prayer potion(4)", Collections.emptyList(), null, 1);
+					break;
+				case CRAFTING:
+					play(activity, ItemID.SAPPHIRE_RING, "Sapphire ring", Collections.emptyList(), null, 1);
+					break;
+				case PRAYER:
+					play(activity, ItemID.DRAGON_BONES, "Dragon bones", Collections.emptyList(), findObject("altar"), 1);
+					break;
+				case ALCHING:
+					play(activity, ItemID.COINS, "Coins", Arrays.asList(ItemID.RUNE_PLATEBODY, ItemID.NATURERUNE), null, 39000);
 					break;
 				default:
 					play(activity, ItemID.UNSTRUNG_YEW_LONGBOW, "Yew longbow (u)", Collections.emptyList(), null, 1);

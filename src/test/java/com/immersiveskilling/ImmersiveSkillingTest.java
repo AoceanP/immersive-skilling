@@ -101,6 +101,39 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void newSkills()
+	{
+		assertEquals(Activity.RUNECRAFT, Activity.classify(Skill.RUNECRAFT, "Nature rune", false, false));
+		assertNull("A tiara isn't a rune", Activity.classify(Skill.RUNECRAFT, "Air tiara", false, false));
+		assertEquals(Activity.THIEVING, Activity.classify(Skill.THIEVING, "Coins", false, false));
+		assertEquals(Activity.HERBLORE, Activity.classify(Skill.HERBLORE, "Prayer potion(3)", false, false));
+		// Firemaking is recognised by what you burn, not by what arrives.
+		assertNull(Activity.classify(Skill.FIREMAKING, "Ashes", false, false));
+		assertEquals(Activity.FIREMAKING, Activity.classifyUsed(Skill.FIREMAKING, "Yew logs"));
+		assertEquals(Activity.FIREMAKING, Activity.classifyUsed(Skill.FIREMAKING, "Bruma root"));
+		assertNull(Activity.classifyUsed(Skill.FIREMAKING, "Tinderbox"));
+		assertNull("Dropping a log isn't firemaking", Activity.classifyUsed(Skill.WOODCUTTING, "Yew logs"));
+		assertTrue(ImmersiveSkillingPlugin.isShown(Skill.THIEVING));
+		assertTrue(Activity.MINING.isGathering());
+		assertFalse(Activity.RUNECRAFT.isGathering());
+	}
+
+	@Test
+	public void craftingPrayerAndMagic()
+	{
+		assertEquals(Activity.CRAFTING, Activity.classify(Skill.CRAFTING, "Sapphire ring", false, false));
+		assertEquals(Activity.ALCHING, Activity.classify(Skill.MAGIC, "Coins", false, false));
+		assertNull("Enchanting isn't alching", Activity.classify(Skill.MAGIC, "Ring of recoil", false, false));
+		// Prayer, like Firemaking, is recognised by what leaves.
+		assertEquals(Activity.PRAYER, Activity.classifyUsed(Skill.PRAYER, "Dragon bones"));
+		assertEquals(Activity.PRAYER, Activity.classifyUsed(Skill.PRAYER, "Infernal ashes"));
+		assertNull(Activity.classifyUsed(Skill.PRAYER, "Prayer potion(4)"));
+		assertNull("Burying isn't firemaking", Activity.classifyUsed(Skill.FIREMAKING, "Dragon bones"));
+		assertEquals("-1 Dragon bones", ImmersiveSkillingPlugin.popText(Activity.PRAYER, 1, "Dragon bones"));
+		assertEquals("+39000 Coins", ImmersiveSkillingPlugin.popText(Activity.ALCHING, 39000, "Coins"));
+	}
+
+	@Test
 	public void propsGrowInAndShrinkAway()
 	{
 		// Starts small, overshoots a little, settles at full size, then shrinks to nothing.
@@ -113,14 +146,28 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void gemsAndJewelleryShine()
+	{
+		assertTrue(ImmersiveSkillingPlugin.isShiny("Sapphire"));
+		assertTrue(ImmersiveSkillingPlugin.isShiny("Gold amulet (u)"));
+		assertTrue(ImmersiveSkillingPlugin.isShiny("Unpowered orb"));
+		assertFalse("An uncut gem is still rough", ImmersiveSkillingPlugin.isShiny("Uncut ruby"));
+		assertFalse(ImmersiveSkillingPlugin.isShiny("Leather body"));
+		assertFalse(ImmersiveSkillingPlugin.isShiny(null));
+	}
+
+	@Test
 	public void popsShowHowMany()
 	{
 		assertEquals("+15 Arrow shaft", ImmersiveSkillingPlugin.popText(Activity.FLETCHING, 15, "Arrow shaft"));
 		assertEquals("+1 Yew logs", ImmersiveSkillingPlugin.popText(Activity.WOODCUTTING, 1, "Yew logs"));
+		assertEquals("-1 Yew logs", ImmersiveSkillingPlugin.popText(Activity.FIREMAKING, 1, "Yew logs"));
+		assertTrue(ImmersiveSkillingPlugin.isPotion("Saradomin brew(4)"));
+		assertFalse(ImmersiveSkillingPlugin.isPotion("Ranarr weed"));
 	}
 
 	@Test
-	public void onlyTheFiveSkillsAreWatched()
+	public void onlyTheTwelveSkillsAreWatched()
 	{
 		int shown = 0;
 		for (Skill s : Skill.values())
@@ -128,7 +175,7 @@ public class ImmersiveSkillingTest
 			shown += ImmersiveSkillingPlugin.isShown(s) ? 1 : 0;
 		}
 		// Cooking is left to Immersive Cooking; combat skills are never touched.
-		assertEquals(5, shown);
+		assertEquals(12, shown);
 		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.ATTACK) || ImmersiveSkillingPlugin.isShown(Skill.SLAYER));
 		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.COOKING));
 	}
@@ -426,6 +473,10 @@ public class ImmersiveSkillingTest
 		};
 		assertTrue(c.enabled() && c.logPile() && c.woodChips() && c.catchBasket() && c.splashes() && c.oreChunks()
 			&& c.dustSparks() && c.hotMetal() && c.forgeSparks() && c.fletchedItem() && c.shavings() && c.itemPops() && c.showPanel());
+		assertTrue("1.1 skills are on too", c.tossedLog() && c.fireEmbers() && c.runeBurst() && c.runeGlints() && c.lootFlight()
+			&& c.lootGlints() && c.herbItem() && c.bubbles());
+		assertTrue("The newest skills are on too", c.craftedItem() && c.craftGlints() && c.offeredBone() && c.prayerLight()
+			&& c.alchFlash() && c.alchCoins());
 		assertEquals(ImmersiveSkillingConfig.PileSize.MEDIUM, c.pileSize());
 		assertEquals(6, c.pileSize().getCount());
 		assertEquals(ImmersiveSkillingConfig.Amount.NORMAL, c.amount());

@@ -125,6 +125,27 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Fletching", description = "The finished item and shavings", position = 4)
 	String fletchingSection = "fletching";
 
+	@ConfigSection(name = "Firemaking", description = "The log tossed onto the fire, and embers", position = 5)
+	String firemakingSection = "firemaking";
+
+	@ConfigSection(name = "Runecraft", description = "Runes bursting from the altar, and glints", position = 6)
+	String runecraftSection = "runecraft";
+
+	@ConfigSection(name = "Thieving", description = "Loot flying to you, and glints", position = 7)
+	String thievingSection = "thieving";
+
+	@ConfigSection(name = "Herblore", description = "The finished potion or herb, bubbles and leaves", position = 8)
+	String herbloreSection = "herblore";
+
+	@ConfigSection(name = "Crafting", description = "The finished item, glints and dust", position = 9)
+	String craftingSection = "crafting";
+
+	@ConfigSection(name = "Prayer", description = "Bones offered or buried, and rising light", position = 10)
+	String prayerSection = "prayer";
+
+	@ConfigSection(name = "Magic", description = "Alching: a green flash and a shower of coins", position = 11)
+	String magicSection = "magic";
+
 	@ConfigSection(name = "General", description = "Shared options", position = 17)
 	String generalSection = "general";
 
@@ -220,6 +241,90 @@ public interface ImmersiveSkillingConfig extends Config
 
 	@ConfigItem(keyName = "showPanel", name = "Sidebar panel", description = "Show the Immersive Skilling panel in the sidebar", section = generalSection, position = 15)
 	default boolean showPanel()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "tossedLog", name = "Log into the fire", description = "Each log arcs from you onto the fire", section = firemakingSection, position = 16)
+	default boolean tossedLog()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "fireEmbers", name = "Embers", description = "Embers and sparks rise as the log catches", section = firemakingSection, position = 17)
+	default boolean fireEmbers()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "runeBurst", name = "Rune burst", description = "Your new runes burst up out of the altar", section = runecraftSection, position = 18)
+	default boolean runeBurst()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "runeGlints", name = "Glints", description = "Glints sparkle around the altar", section = runecraftSection, position = 19)
+	default boolean runeGlints()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "lootFlight", name = "Loot flight", description = "What you steal flies from the stall or pocket to you", section = thievingSection, position = 20)
+	default boolean lootFlight()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "lootGlints", name = "Glints", description = "Glints sparkle as the loot reaches you", section = thievingSection, position = 21)
+	default boolean lootGlints()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "herbItem", name = "Finished item", description = "The potion or clean herb appears in front of you for a moment", section = herbloreSection, position = 22)
+	default boolean herbItem()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "bubbles", name = "Bubbles and leaves", description = "Potions bubble; cleaned herbs shed a few leaves", section = herbloreSection, position = 23)
+	default boolean bubbles()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "craftedItem", name = "Finished item", description = "Each finished item appears in front of you for a moment", section = craftingSection, position = 24)
+	default boolean craftedItem()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "craftGlints", name = "Glints and dust", description = "Gems and jewellery glint; everything else gives a puff of dust", section = craftingSection, position = 25)
+	default boolean craftGlints()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "offeredBone", name = "Bone offering", description = "The bone flies onto the altar, or sinks into the ground when you bury it", section = prayerSection, position = 26)
+	default boolean offeredBone()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "prayerLight", name = "Rising light", description = "Soft motes of light rise from the altar or the ground", section = prayerSection, position = 27)
+	default boolean prayerLight()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "alchFlash", name = "Green flash", description = "The item vanishes above you in a green flash", section = magicSection, position = 28)
+	default boolean alchFlash()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "alchCoins", name = "Coin shower", description = "Coins burst out and fall around you", section = magicSection, position = 29)
+	default boolean alchCoins()
 	{
 		return true;
 	}

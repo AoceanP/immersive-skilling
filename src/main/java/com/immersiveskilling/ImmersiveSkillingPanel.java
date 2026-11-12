@@ -154,6 +154,27 @@ class ImmersiveSkillingPanel extends PluginPanel
 		stack.add(skillCard("Fletching", "The finished item and shavings", Activity.FLETCHING,
 			row("Finished item", "fletchedItem", config::fletchedItem),
 			row("Shavings", "shavings", config::shavings)));
+		stack.add(skillCard("Firemaking", "The log lands on the fire", Activity.FIREMAKING,
+			row("Log into the fire", "tossedLog", config::tossedLog),
+			row("Embers", "fireEmbers", config::fireEmbers)));
+		stack.add(skillCard("Runecraft", "Runes burst out of the altar", Activity.RUNECRAFT,
+			row("Rune burst", "runeBurst", config::runeBurst),
+			row("Glints", "runeGlints", config::runeGlints)));
+		stack.add(skillCard("Thieving", "Loot flies to you, with glints", Activity.THIEVING,
+			row("Loot flight", "lootFlight", config::lootFlight),
+			row("Glints", "lootGlints", config::lootGlints)));
+		stack.add(skillCard("Herblore", "Potions bubble, herbs leaf", Activity.HERBLORE,
+			row("Finished item", "herbItem", config::herbItem),
+			row("Bubbles and leaves", "bubbles", config::bubbles)));
+		stack.add(skillCard("Crafting", "Gems glint, the rest gives dust", Activity.CRAFTING,
+			row("Finished item", "craftedItem", config::craftedItem),
+			row("Glints and dust", "craftGlints", config::craftGlints)));
+		stack.add(skillCard("Prayer", "Bones on the altar, rising light", Activity.PRAYER,
+			row("Bone offering", "offeredBone", config::offeredBone),
+			row("Rising light", "prayerLight", config::prayerLight)));
+		stack.add(skillCard("Magic", "Alching: flash and coins", Activity.ALCHING,
+			row("Green flash", "alchFlash", config::alchFlash),
+			row("Coin shower", "alchCoins", config::alchCoins)));
 
 		RoundPanel general = card();
 		general.add(bold("General", TEXT));

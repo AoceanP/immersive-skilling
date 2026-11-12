@@ -265,7 +265,7 @@ final class Props
 	/**
 	 * WHAT: Adds another flight after the current one: from where the prop is to a new point.
 	 * WHY: Finished goods don't just vanish where they're made: a bar cools, then goes into your
-	 * pack; a fletched bow spins, then flies to you.
+	 * pack; runes hang over the altar, then stream to you.
 	 * PRE: Client thread. at is when the flight starts, in seconds, after the current one ends.
 	 * Heights are above the ground.
 	 * POST: The prop will fly there at that time.
