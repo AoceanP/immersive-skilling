@@ -94,7 +94,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.1.2";
+	static final String VERSION = "1.1.3";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -287,6 +287,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 		if (before != null && xp > before)
 		{
 			xpTick.put(skill, client.getTickCount());
+			if (skill == Skill.AGILITY)
+			{
+				// Agility gives no item: the XP itself says you cleared an obstacle.
+				agility(xp - before);
+			}
 			match();
 		}
 	}
@@ -438,7 +443,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 		}
 		if (!config.enabled() || "logPile".equals(event.getKey()) || "catchBasket".equals(event.getKey())
-			|| "oreChunks".equals(event.getKey()) || "pileSize".equals(event.getKey()))
+			|| "oreChunks".equals(event.getKey()) || "harvestPile".equals(event.getKey()) || "pileSize".equals(event.getKey()))
 		{
 			clientThread.invokeLater(this::clearPile);
 		}
@@ -522,6 +527,19 @@ public class ImmersiveSkillingPlugin extends Plugin
 			case PRAYER:
 				// Bones go onto the altar beside you; with none, they're buried.
 				return findObject("altar");
+			case HUNTER:
+			{
+				Player player = client.getLocalPlayer();
+				Actor target = player == null ? null : player.getInteracting();
+				WorldView targetView = target == null ? null : target.getWorldView();
+				if (targetView != null && targetView.getId() == viewOf(player).getId())
+				{
+					// Butterflies and implings are caught with a net in your hand.
+					return target.getLocalLocation();
+				}
+				GameObject trap = workObject(client.getLocalPlayer().getLocalLocation(), "check", "dismantle", "reset");
+				return trap != null ? trap.getLocalLocation() : findObject("trap", "snare", "net");
+			}
 			case THIEVING:
 			{
 				Player player = client.getLocalPlayer();
@@ -579,7 +597,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	{
 		return skill == Skill.WOODCUTTING || skill == Skill.FISHING || skill == Skill.MINING || skill == Skill.SMITHING
 			|| skill == Skill.FLETCHING || skill == Skill.FIREMAKING || skill == Skill.RUNECRAFT || skill == Skill.THIEVING
-			|| skill == Skill.HERBLORE || skill == Skill.CRAFTING || skill == Skill.PRAYER || skill == Skill.MAGIC;
+			|| skill == Skill.HERBLORE || skill == Skill.CRAFTING || skill == Skill.PRAYER || skill == Skill.MAGIC
+			|| skill == Skill.FARMING || skill == Skill.HUNTER || skill == Skill.AGILITY || skill == Skill.CONSTRUCTION;
 	}
 
 	private static Map<Integer, Integer> counts(ItemContainer container)
@@ -813,6 +832,23 @@ public class ImmersiveSkillingPlugin extends Plugin
 			case ALCHING:
 				alch(itemId, lost, at, plane, now, amount);
 				break;
+			case FARMING:
+				if (config.soilPuffs())
+				{
+					particles.burst(Particles.Kind.SOIL, src[0], src[1], 10, 10, amount);
+				}
+				if (config.harvestPile())
+				{
+					// Pulled out of the patch, it pops up and drops onto the heap.
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 15, 80, now);
+				}
+				break;
+			case HUNTER:
+				hunt(itemId, station, at, tx, ty, plane, now, amount);
+				break;
+			case CONSTRUCTION:
+				build(itemId, at, tx, ty, plane, now, amount);
+				break;
 			default:
 				fletch(itemId, at, fx, fy, plane,
 					now + ingredients(lost, at, at.getX() + fx * 80, at.getY() + fy * 80, 60, plane, now), amount);
@@ -821,7 +857,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 		if (config.itemPops())
 		{
 			// Loot is shown over you, where it lands; the rest where it was made.
-			boolean overYou = activity == Activity.THIEVING || activity == Activity.ALCHING;
+			boolean overYou = activity == Activity.THIEVING || activity == Activity.ALCHING || activity == Activity.HUNTER;
 			double popX = pileActivity == activity ? pileX : overYou ? at.getX() : targetX;
 			double popY = pileActivity == activity ? pileY : overYou ? at.getY() : targetY;
 			overlay.addPop(new EffectsOverlay.Pop(itemId, popText, popX, popY, plane, now));
@@ -949,6 +985,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 				break;
 			case MINING:
 				actions = new String[]{"mine"};
+				break;
+			case FARMING:
+				actions = new String[]{"harvest", "pick", "dig"};
 				break;
 			case FISHING:
 			{
@@ -1280,7 +1319,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 */
 	static String popText(Activity activity, int quantity, String itemName)
 	{
-		boolean usedUp = activity == Activity.FIREMAKING || activity == Activity.PRAYER;
+		boolean usedUp = activity == Activity.FIREMAKING || activity == Activity.PRAYER || activity == Activity.CONSTRUCTION;
 		return (usedUp ? "-" : "+") + Math.max(1, quantity) + " " + itemName;
 	}
 
@@ -1622,6 +1661,131 @@ public class ImmersiveSkillingPlugin extends Plugin
 	}
 
 	/**
+	 * WHAT: Hunter: a puff where the catch came from, and the catch flies to you.
+	 * WHY: Checking a trap or netting a butterfly showed nothing but the inventory.
+	 * PRE: Client thread. source is the trap, net target, or null for in front of you.
+	 * POST: A prop and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void hunt(int itemId, LocalPoint source, LocalPoint at, double tx, double ty, int plane, double now, double amount)
+	{
+		double sx = source != null ? source.getX() : tx;
+		double sy = source != null ? source.getY() : ty;
+		if (config.huntPuffs())
+		{
+			overlay.getParticles().burst(Particles.Kind.DUST, sx, sy, 20, 6, amount);
+			overlay.getParticles().burst(Particles.Kind.LEAF, sx, sy, 20, 3, amount);
+		}
+		if (config.huntCatch())
+		{
+			Props.Prop loot = props.launch(props.itemModel(itemId, 110, 0), Props.Group.FLOATING, plane, sx, sy, 30, at.getX(),
+				at.getY(), 80, 70, 0.55, false, 0, now);
+			if (loot != null)
+			{
+				loot.spinPerSecond = 300;
+				loot.expires = now + 0.55;
+				Props.resize(loot, itemId, 110, 0.1, 0.12);
+			}
+		}
+		targetX = sx;
+		targetY = sy;
+	}
+
+	/**
+	 * WHAT: Construction: the plank flies from you to what you're building, in a cloud of
+	 * sawdust with a few hammer sparks.
+	 * WHY: Building a whole room of furniture showed only the planks leaving your inventory.
+	 * PRE: Client thread. (tx, ty) is the tile in front of you, where you build.
+	 * POST: A prop and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void build(int plankId, LocalPoint at, double tx, double ty, int plane, double now, double amount)
+	{
+		// The hotspot you're building on, when there is one in reach.
+		GameObject spot = workObject(at, "build", "remove", "repair");
+		if (spot != null && spot.getLocalLocation() != null)
+		{
+			double[] e = edge(spot.getLocalLocation().getX(), spot.getLocalLocation().getY(), Math.max(spot.sizeX(), spot.sizeY()),
+				at.getX(), at.getY());
+			tx = e[0];
+			ty = e[1];
+		}
+		if (config.plankFlight())
+		{
+			Props.Prop plank = props.launch(props.itemModel(plankId, 120, 0), Props.Group.FLOATING, plane, at.getX(), at.getY(), 70, tx,
+				ty, 30, 50, 0.4, false, 0, now);
+			if (plank != null)
+			{
+				plank.spinPerSecond = 700;
+				plank.expires = now + 0.45;
+				Props.resize(plank, plankId, 120, 0.08, 0.15);
+			}
+		}
+		if (config.buildDust())
+		{
+			overlay.getParticles().burst(Particles.Kind.DUST, tx, ty, 30, 8, amount);
+			overlay.getParticles().burst(Particles.Kind.SPARK, tx, ty, 40, 6, amount);
+			overlay.getParticles().burst(Particles.Kind.CHIP, tx, ty, 30, 5, amount);
+		}
+		targetX = tx;
+		targetY = ty;
+	}
+
+	/**
+	 * WHAT: Agility: a puff of dust where you land, and the obstacle's XP rising over you.
+	 * WHY: Laps are the same clicks over and over; this marks each obstacle cleared.
+	 * PRE: Client thread. gained is the XP from this obstacle.
+	 * POST: Particles and a pop are added; the panel status is updated.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void agility(int gained)
+	{
+		if (!config.enabled() || paused || props == null)
+		{
+			return;
+		}
+		Player player = client.getLocalPlayer();
+		if (player == null || player.getLocalLocation() == null)
+		{
+			return;
+		}
+		WorldView wv = viewOf(player);
+		overlay.setView(wv.getId(), wv.getPlane());
+		LocalPoint at = player.getLocalLocation();
+		double now = seconds();
+		if (config.landingDust())
+		{
+			overlay.getParticles().burst(Particles.Kind.DUST, at.getX(), at.getY(), 5, 10, config.amount().getScale());
+			overlay.getParticles().single(Particles.Kind.RIPPLE, at.getX(), at.getY(), 0, 0xD8CBB4, 100, 0.6);
+		}
+		if (config.agilityPops())
+		{
+			overlay.addPop(new EffectsOverlay.Pop(-1, agilityText(gained), at.getX(), at.getY(), wv.getPlane(), now));
+		}
+		setHint("");
+		lastActivity = Activity.AGILITY;
+		lastActivityTime = now;
+		lastStandPoint = at;
+		updateStatus(Activity.AGILITY);
+	}
+
+	/**
+	 * WHAT: The Agility pop's text, e.g. "+46 Agility XP".
+	 * WHY: Agility gives XP, not an item, so the pop says what you earned instead.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: the text
+	 * THROWS: Nothing.
+	 */
+	static String agilityText(int gained)
+	{
+		return "+" + String.format("%,d", Math.max(1, gained)) + " Agility XP";
+	}
+
+	/**
 	 * WHAT: Whether a Herblore product is a potion (it bubbles) rather than a cleaned herb.
 	 * WHY: Potions are named with their doses, e.g. "Prayer potion(3)", or as a mix or brew.
 	 * PRE: None.
@@ -1775,6 +1939,18 @@ public class ImmersiveSkillingPlugin extends Plugin
 					break;
 				case ALCHING:
 					play(activity, ItemID.COINS, "Coins", Arrays.asList(ItemID.RUNE_PLATEBODY, ItemID.NATURERUNE), null, 39000);
+					break;
+				case FARMING:
+					play(activity, ItemID.POTATO, "Potato", Collections.emptyList(), null, 1);
+					break;
+				case HUNTER:
+					play(activity, ItemID.CHINCHOMPA_BIG_CAPTURED, "Red chinchompa", Collections.emptyList(), null, 1);
+					break;
+				case CONSTRUCTION:
+					play(activity, ItemID.PLANK_OAK, "Oak plank", Collections.emptyList(), null, 2);
+					break;
+				case AGILITY:
+					agility(46);
 					break;
 				default:
 					play(activity, ItemID.UNSTRUNG_YEW_LONGBOW, "Yew longbow (u)", Collections.emptyList(), null, 1);

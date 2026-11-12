@@ -47,7 +47,7 @@ final class Particles
 
 	enum Kind
 	{
-		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING, BUBBLE, GLINT, LEAF, MOTE, MAGIC, STONE, FALLING_LEAF, RIPPLE, GLOW
+		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING, BUBBLE, GLINT, LEAF, MOTE, MAGIC, SOIL, STONE, FALLING_LEAF, RIPPLE, GLOW
 	}
 
 	static final class Particle
@@ -273,6 +273,13 @@ final class Particles
 					gravity = 90;
 					life = 2.2 + random.nextDouble() * 0.6;
 					size = 3f;
+					break;
+				case SOIL:
+					speed = 50 + random.nextDouble() * 60;
+					up = 120 + random.nextDouble() * 80;
+					gravity = 620;
+					life = 0.7 + random.nextDouble() * 0.3;
+					size = 2.5f;
 					break;
 				default:
 					speed = 20 + random.nextDouble() * 30;

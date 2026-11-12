@@ -146,6 +146,18 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Magic", description = "Alching: a green flash and a shower of coins", position = 11)
 	String magicSection = "magic";
 
+	@ConfigSection(name = "Farming", description = "A harvest pile beside you, and soil", position = 12)
+	String farmingSection = "farming";
+
+	@ConfigSection(name = "Hunter", description = "Your catch flying to you, and puffs", position = 13)
+	String hunterSection = "hunter";
+
+	@ConfigSection(name = "Agility", description = "A puff of dust where you land, and the XP", position = 14)
+	String agilitySection = "agility";
+
+	@ConfigSection(name = "Construction", description = "The plank flying into place, dust and sparks", position = 15)
+	String constructionSection = "construction";
+
 	@ConfigSection(name = "General", description = "Shared options", position = 17)
 	String generalSection = "general";
 
@@ -325,6 +337,54 @@ public interface ImmersiveSkillingConfig extends Config
 
 	@ConfigItem(keyName = "alchCoins", name = "Coin shower", description = "Coins burst out and fall around you", section = magicSection, position = 29)
 	default boolean alchCoins()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "harvestPile", name = "Harvest pile", description = "Your harvest pops out of the patch onto a pile beside you", section = farmingSection, position = 30)
+	default boolean harvestPile()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "soilPuffs", name = "Soil", description = "Clumps of soil fly up as you harvest", section = farmingSection, position = 31)
+	default boolean soilPuffs()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "huntCatch", name = "Catch flight", description = "Your catch flies from the trap or net to you", section = hunterSection, position = 32)
+	default boolean huntCatch()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "huntPuffs", name = "Puffs", description = "A puff of dust where the catch came from", section = hunterSection, position = 33)
+	default boolean huntPuffs()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "landingDust", name = "Landing dust", description = "A puff of dust where you land after each obstacle", section = agilitySection, position = 34)
+	default boolean landingDust()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "agilityPops", name = "XP pops", description = "The XP for each obstacle rises over you, e.g. \"+46 Agility XP\"", section = agilitySection, position = 35)
+	default boolean agilityPops()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "plankFlight", name = "Plank flight", description = "The plank flies from you to what you build", section = constructionSection, position = 36)
+	default boolean plankFlight()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "buildDust", name = "Dust and sparks", description = "Sawdust and hammer sparks where you build", section = constructionSection, position = 37)
+	default boolean buildDust()
 	{
 		return true;
 	}

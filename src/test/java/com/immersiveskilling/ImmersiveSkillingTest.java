@@ -119,18 +119,33 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
-	public void craftingPrayerAndMagic()
+	public void craftingPrayerMagicFarmingAndHunter()
 	{
 		assertEquals(Activity.CRAFTING, Activity.classify(Skill.CRAFTING, "Sapphire ring", false, false));
 		assertEquals(Activity.ALCHING, Activity.classify(Skill.MAGIC, "Coins", false, false));
 		assertNull("Enchanting isn't alching", Activity.classify(Skill.MAGIC, "Ring of recoil", false, false));
+		assertEquals(Activity.FARMING, Activity.classify(Skill.FARMING, "Potato", false, false));
+		assertEquals(Activity.HUNTER, Activity.classify(Skill.HUNTER, "Red chinchompa", false, false));
 		// Prayer, like Firemaking, is recognised by what leaves.
 		assertEquals(Activity.PRAYER, Activity.classifyUsed(Skill.PRAYER, "Dragon bones"));
 		assertEquals(Activity.PRAYER, Activity.classifyUsed(Skill.PRAYER, "Infernal ashes"));
 		assertNull(Activity.classifyUsed(Skill.PRAYER, "Prayer potion(4)"));
 		assertNull("Burying isn't firemaking", Activity.classifyUsed(Skill.FIREMAKING, "Dragon bones"));
+		assertTrue(Activity.FARMING.isGathering());
+		assertFalse(Activity.HUNTER.isGathering());
 		assertEquals("-1 Dragon bones", ImmersiveSkillingPlugin.popText(Activity.PRAYER, 1, "Dragon bones"));
 		assertEquals("+39000 Coins", ImmersiveSkillingPlugin.popText(Activity.ALCHING, 39000, "Coins"));
+	}
+
+	@Test
+	public void agilityAndConstruction()
+	{
+		assertEquals(Activity.CONSTRUCTION, Activity.classifyUsed(Skill.CONSTRUCTION, "Oak plank"));
+		assertNull("Nails go too, but the plank is what you see", Activity.classifyUsed(Skill.CONSTRUCTION, "Steel nails"));
+		assertEquals("-4 Oak plank", ImmersiveSkillingPlugin.popText(Activity.CONSTRUCTION, 4, "Oak plank"));
+		assertEquals("+46 Agility XP", ImmersiveSkillingPlugin.agilityText(46));
+		assertEquals("+1,140 Agility XP", ImmersiveSkillingPlugin.agilityText(1140));
+		assertTrue(ImmersiveSkillingPlugin.isShown(Skill.AGILITY) && ImmersiveSkillingPlugin.isShown(Skill.CONSTRUCTION));
 	}
 
 	@Test
@@ -167,7 +182,7 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
-	public void onlyTheTwelveSkillsAreWatched()
+	public void onlyTheSixteenSkillsAreWatched()
 	{
 		int shown = 0;
 		for (Skill s : Skill.values())
@@ -175,7 +190,7 @@ public class ImmersiveSkillingTest
 			shown += ImmersiveSkillingPlugin.isShown(s) ? 1 : 0;
 		}
 		// Cooking is left to Immersive Cooking; combat skills are never touched.
-		assertEquals(12, shown);
+		assertEquals(16, shown);
 		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.ATTACK) || ImmersiveSkillingPlugin.isShown(Skill.SLAYER));
 		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.COOKING));
 	}
@@ -476,7 +491,8 @@ public class ImmersiveSkillingTest
 		assertTrue("1.1 skills are on too", c.tossedLog() && c.fireEmbers() && c.runeBurst() && c.runeGlints() && c.lootFlight()
 			&& c.lootGlints() && c.herbItem() && c.bubbles());
 		assertTrue("The newest skills are on too", c.craftedItem() && c.craftGlints() && c.offeredBone() && c.prayerLight()
-			&& c.alchFlash() && c.alchCoins());
+			&& c.alchFlash() && c.alchCoins() && c.harvestPile() && c.soilPuffs() && c.huntCatch() && c.huntPuffs()
+			&& c.landingDust() && c.agilityPops() && c.plankFlight() && c.buildDust());
 		assertEquals(ImmersiveSkillingConfig.PileSize.MEDIUM, c.pileSize());
 		assertEquals(6, c.pileSize().getCount());
 		assertEquals(ImmersiveSkillingConfig.Amount.NORMAL, c.amount());

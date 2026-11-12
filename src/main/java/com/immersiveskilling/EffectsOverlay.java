@@ -287,6 +287,10 @@ class EffectsOverlay extends Overlay
 				g.setColor(new Color(220, 255, 220, (int) (240 * alpha)));
 				g.fill(new Ellipse2D.Double(x - 1, y - 1, 2, 2));
 				break;
+			case SOIL:
+				g.setColor(new Color(96, 70, 44, (int) (230 * alpha)));
+				g.fill(new Ellipse2D.Double(x - 1.5, y - 1.5, 3, 3));
+				break;
 			case STONE:
 			{
 				AffineTransform t = g.getTransform();

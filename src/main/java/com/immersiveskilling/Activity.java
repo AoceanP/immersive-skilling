@@ -50,7 +50,11 @@ enum Activity
 	HERBLORE("Herblore"),
 	CRAFTING("Crafting"),
 	PRAYER("Prayer"),
-	ALCHING("Alching");
+	ALCHING("Alching"),
+	FARMING("Farming"),
+	HUNTER("Hunter"),
+	AGILITY("Agility"),
+	CONSTRUCTION("Construction");
 
 	/** Fish that don't start with "raw": eels, minnows and the aerial fishing catches. */
 	private static final java.util.Set<String> OTHER_CATCHES = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -119,6 +123,10 @@ enum Activity
 			case MAGIC:
 				// Only alching pays out coins for Magic XP; other spells are left alone.
 				return name.equals("coins") ? ALCHING : null;
+			case FARMING:
+				return FARMING;
+			case HUNTER:
+				return HUNTER;
 			default:
 				return null;
 		}
@@ -131,7 +139,7 @@ enum Activity
 	 * PRE: skill is the skill that gained XP this tick, or null; itemName may be null.
 	 * POST: Nothing changes.
 	 * RETURN: FIREMAKING for a burnt log, root or kindling, PRAYER for bones or ashes,
-	 * otherwise null
+	 * CONSTRUCTION for planks, otherwise null
 	 * THROWS: Nothing.
 	 */
 	static Activity classifyUsed(Skill skill, String itemName)
@@ -149,6 +157,11 @@ enum Activity
 		{
 			return name.contains("bones") || name.endsWith("ashes") ? PRAYER : null;
 		}
+		if (skill == Skill.CONSTRUCTION)
+		{
+			// Nails and cloth go too, but the plank is what you see.
+			return name.contains("plank") ? CONSTRUCTION : null;
+		}
 		return null;
 	}
 
@@ -157,12 +170,12 @@ enum Activity
 	 * WHY: Only gathering piles up; the rest play and fade.
 	 * PRE: None.
 	 * POST: Nothing changes.
-	 * RETURN: true for woodcutting, fishing and mining
+	 * RETURN: true for woodcutting, fishing, mining and farming harvests
 	 * THROWS: Nothing.
 	 */
 	boolean isGathering()
 	{
-		return this == WOODCUTTING || this == FISHING || this == MINING;
+		return this == WOODCUTTING || this == FISHING || this == MINING || this == FARMING;
 	}
 
 	/**

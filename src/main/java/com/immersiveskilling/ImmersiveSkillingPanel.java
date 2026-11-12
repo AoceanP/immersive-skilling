@@ -175,6 +175,18 @@ class ImmersiveSkillingPanel extends PluginPanel
 		stack.add(skillCard("Magic", "Alching: flash and coins", Activity.ALCHING,
 			row("Green flash", "alchFlash", config::alchFlash),
 			row("Coin shower", "alchCoins", config::alchCoins)));
+		stack.add(skillCard("Farming", "Harvests pile up beside you", Activity.FARMING,
+			row("Harvest pile", "harvestPile", config::harvestPile),
+			row("Soil", "soilPuffs", config::soilPuffs)));
+		stack.add(skillCard("Hunter", "Your catch flies to you", Activity.HUNTER,
+			row("Catch flight", "huntCatch", config::huntCatch),
+			row("Puffs", "huntPuffs", config::huntPuffs)));
+		stack.add(skillCard("Agility", "Dust where you land, and XP", Activity.AGILITY,
+			row("Landing dust", "landingDust", config::landingDust),
+			row("XP pops", "agilityPops", config::agilityPops)));
+		stack.add(skillCard("Construction", "The plank flies into place", Activity.CONSTRUCTION,
+			row("Plank flight", "plankFlight", config::plankFlight),
+			row("Dust and sparks", "buildDust", config::buildDust)));
 
 		RoundPanel general = card();
 		general.add(bold("General", TEXT));
