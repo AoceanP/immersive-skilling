@@ -27,18 +27,22 @@ package com.immersiveskilling;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.LayoutManager;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -46,6 +50,9 @@ import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.ColorScheme;
@@ -153,17 +160,25 @@ class ImmersiveSkillingPanel extends PluginPanel
 		general.add(row("Item pops", "itemPops", config::itemPops));
 		general.add(segmented("Effect amount", "amount", ImmersiveSkillingConfig.Amount.values(), config::amount));
 		general.add(segmented("Clear piles when", "clearWhen", ImmersiveSkillingConfig.ClearWhen.values(), config::clearWhen));
+
 		stack.add(general);
 
 		JPanel feedback = new JPanel(new GridLayout(1, 2, 4, 0));
 		feedback.setOpaque(false);
 		feedback.add(button("Report bug", "Opens the plugin's GitHub page to report a bug",
-			() -> LinkBrowser.browse(ISSUES + "?labels=bug")));
+			() -> LinkBrowser.browse(bugLink())));
 		feedback.add(button("Suggest", "Opens the plugin's GitHub page to suggest a feature",
 			() -> LinkBrowser.browse(ISSUES + "?labels=enhancement")));
 		stack.add(feedback);
 
-		add(stack, BorderLayout.NORTH);
+		// Seventeen cards don't fit any screen, so the panel scrolls; it always fills the sidebar's width.
+		ScrollStack holder = new ScrollStack();
+		holder.add(stack, BorderLayout.NORTH);
+		JScrollPane scroll = new JScrollPane(holder, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+			ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		scroll.setBorder(BorderFactory.createEmptyBorder());
+		scroll.getVerticalScrollBar().setUnitIncrement(16);
+		add(scroll, BorderLayout.CENTER);
 		refresh();
 	}
 
@@ -221,35 +236,173 @@ class ImmersiveSkillingPanel extends PluginPanel
 		repaint();
 	}
 
+	/**
+	 * WHAT: The link for a new bug report, with the version and a few questions filled in.
+	 * WHY: A report that says the version and where it happened can be fixed straight away.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: the GitHub new-issue link
+	 * THROWS: Nothing.
+	 */
+	static String bugLink()
+	{
+		String body = "Plugin version: " + ImmersiveSkillingPlugin.VERSION + "\n\n"
+			+ "What happened:\n\n"
+			+ "Which skill and where (for example fishing from a boat):\n";
+		return ISSUES + "?labels=bug&body=" + encode(body);
+	}
+
+	/**
+	 * WHAT: Escapes text for a link's query string.
+	 * WHY: The body has spaces, new lines and colons; java.net's encoder is off limits here.
+	 * PRE: text is not null.
+	 * POST: Nothing changes.
+	 * RETURN: the escaped text
+	 * THROWS: Nothing.
+	 */
+	static String encode(String text)
+	{
+		StringBuilder out = new StringBuilder();
+		for (char c : text.toCharArray())
+		{
+			if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || "-_.~".indexOf(c) >= 0)
+			{
+				out.append(c);
+			}
+			else
+			{
+				out.append(String.format("%%%02X", (int) c));
+			}
+		}
+		return out.toString();
+	}
+
 	// ---- Building blocks ---------------------------------------------------------------------
 
 	private RoundPanel skillCard(String title, String what, Activity activity, JComponent... rows)
 	{
-		RoundPanel c = card();
-		c.add(bold(title, TEXT));
-		c.add(small(what, SUBTLE));
-		for (JComponent r : rows)
-		{
-			c.add(r);
-		}
-		c.add(button("Preview at your feet", "Plays the effect where you stand, as if you'd just made one",
-			() -> plugin.preview(activity)));
-		return c;
+		JComponent[] body = Arrays.copyOf(rows, rows.length + 1);
+		body[rows.length] = button("Preview at your feet", "Plays the effect where you stand, as if you'd just made one",
+			() -> plugin.preview(activity));
+		return fold(title, what, body);
 	}
 
 	private RoundPanel metalCard()
 	{
-		RoundPanel c = card();
-		c.add(bold("Smelting and Smithing", TEXT));
-		c.add(small("Red-hot bars and items that cool", SUBTLE));
-		c.add(row("Hot metal", "hotMetal", config::hotMetal));
-		c.add(row("Sparks and embers", "forgeSparks", config::forgeSparks));
 		JPanel previews = new JPanel(new GridLayout(1, 2, 4, 0));
 		previews.setOpaque(false);
 		previews.add(button("Preview smelt", "Plays the furnace effect where you stand", () -> plugin.preview(Activity.SMELTING)));
 		previews.add(button("Preview smith", "Plays the anvil effect where you stand", () -> plugin.preview(Activity.SMITHING)));
-		c.add(previews);
+		return fold("Smithing", "Red-hot bars and items cool",
+			row("Hot metal", "hotMetal", config::hotMetal),
+			row("Sparks and embers", "forgeSparks", config::forgeSparks),
+			previews);
+	}
+
+	/**
+	 * WHAT: A skill card that folds: the title with how many of its effects are on, a line on
+	 * what it shows, and Show or Hide to open its switches and Preview button.
+	 * WHY: Seventeen open cards made the panel over two screens tall. Folded, every skill fits at a
+	 * glance and nothing is lost: the switches are one click away.
+	 * PRE: Swing thread. body holds the card's rows and buttons.
+	 * POST: The card is built folded; a refresher keeps its count up to date.
+	 * RETURN: the card
+	 * THROWS: Nothing.
+	 */
+	private RoundPanel fold(String title, String what, JComponent... body)
+	{
+		return foldWith(title, what, null, body);
+	}
+
+	/**
+	 * WHAT: A folding card whose header shows a custom status instead of how many switches are on.
+	 * WHY: Lets a card show its own status in place of the usual count.
+	 * PRE: Swing thread. status may be null for the usual "2 of 2 on".
+	 * POST: The card is built folded.
+	 * RETURN: the card
+	 * THROWS: Nothing.
+	 */
+	private RoundPanel foldWith(String title, String what, Supplier<String> status, JComponent... body)
+	{
+		RoundPanel c = card();
+		JPanel head = new JPanel(new BorderLayout(6, 0));
+		head.setOpaque(false);
+		head.add(bold(title, TEXT), BorderLayout.CENTER);
+		JLabel count = small("", SUBTLE);
+		head.add(count, BorderLayout.EAST);
+		c.add(head);
+		JPanel sub = new JPanel(new BorderLayout(6, 0));
+		sub.setOpaque(false);
+		sub.add(small(what, SUBTLE), BorderLayout.CENTER);
+		JLabel showHide = small("Show", ORANGE);
+		sub.add(showHide, BorderLayout.EAST);
+		c.add(sub);
+
+		// In a holder, so the folded body takes no space (the grid keeps a row for hidden children).
+		JPanel inner = new JPanel(new DynamicGridLayout(0, 1, 0, 4));
+		inner.setOpaque(false);
+		inner.setBorder(BorderFactory.createEmptyBorder(2, 0, 0, 0));
+		List<Toggle> toggles = new ArrayList<>();
+		for (JComponent b : body)
+		{
+			inner.add(b);
+			collectToggles(b, toggles);
+		}
+		inner.setVisible(false);
+		JPanel holder = new JPanel(new BorderLayout());
+		holder.setOpaque(false);
+		holder.add(inner, BorderLayout.CENTER);
+		c.add(holder);
+
+		MouseAdapter flip = new MouseAdapter()
+		{
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				inner.setVisible(!inner.isVisible());
+				showHide.setText(inner.isVisible() ? "Hide" : "Show");
+				revalidate();
+				repaint();
+			}
+		};
+		for (JComponent clickable : new JComponent[]{head, sub})
+		{
+			clickable.addMouseListener(flip);
+			clickable.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			clickable.setToolTipText("Show or hide this skill's switches");
+		}
+		refreshers.add(() ->
+		{
+			int on = 0;
+			for (Toggle t : toggles)
+			{
+				on += t.isOn() ? 1 : 0;
+			}
+			if (status != null)
+			{
+				count.setText(status.get());
+				count.setForeground(ORANGE);
+				return;
+			}
+			count.setText(on + " of " + toggles.size() + " on");
+			count.setForeground(on == toggles.size() ? GREEN : on == 0 ? SUBTLE : MUTED);
+		});
 		return c;
+	}
+
+	private static void collectToggles(Component c, List<Toggle> into)
+	{
+		if (c instanceof Toggle)
+		{
+			into.add((Toggle) c);
+		}
+		else if (c instanceof Container)
+		{
+			for (Component child : ((Container) c).getComponents())
+			{
+				collectToggles(child, into);
+			}
+		}
 	}
 
 	private static RoundPanel card()
@@ -378,6 +531,53 @@ class ImmersiveSkillingPanel extends PluginPanel
 	 * RETURN: Not applicable.
 	 * THROWS: Nothing.
 	 */
+	/**
+	 * WHAT: The panel inside the scroll pane, as wide as the sidebar and as tall as its cards.
+	 * WHY: A plain panel in a scroll pane keeps its own width and can push past the sidebar.
+	 * PRE: Swing thread.
+	 * POST: Not applicable.
+	 * RETURN: Not applicable.
+	 * THROWS: Nothing.
+	 */
+	static class ScrollStack extends JPanel implements Scrollable
+	{
+		ScrollStack()
+		{
+			super(new BorderLayout());
+			setBackground(ColorScheme.DARK_GRAY_COLOR);
+		}
+
+		@Override
+		public Dimension getPreferredScrollableViewportSize()
+		{
+			return getPreferredSize();
+		}
+
+		@Override
+		public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction)
+		{
+			return 16;
+		}
+
+		@Override
+		public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction)
+		{
+			return visible.height;
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportWidth()
+		{
+			return true;
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportHeight()
+		{
+			return false;
+		}
+	}
+
 	static class RoundPanel extends JPanel
 	{
 		private final int radius;

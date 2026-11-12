@@ -38,6 +38,8 @@ import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
+import net.runelite.api.CollisionData;
+import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
@@ -90,7 +92,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.1.0";
+	static final String VERSION = "1.1.1";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -101,6 +103,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 	/** Ambient sparks and chips keep going this long (seconds) after the last item. */
 	static final double AMBIENT_SECONDS = 6;
 	private static final int TILE = 128;
+	/** On a boat the pile is packed this much closer, so a full pile still fits on your own tile. */
+	static final double BOAT_SPREAD = 0.8;
+	/** How far behind your feet a pile on a boat sits, in local units (a tile is 128). */
+	static final int BOAT_PILE_BACK = 16;
 	/** Skills whose items can go straight into a log basket, fish barrel or bag. */
 	private static final List<Skill> BAG_SKILLS = Arrays.asList(Skill.WOODCUTTING, Skill.FISHING, Skill.MINING);
 
@@ -141,6 +147,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private int pilePlane;
 	private int pileView = -1;
 	private int pileCount;
+	// The way you faced when the pile started (0-2047), so the pile lines up with you.
+	private int pileYaw;
+	// How spread out the pile is: 1 on land, closer on a boat.
+	private double pileSpread = 1;
 
 	// The last activity, for ambient effects while you keep working.
 	private Activity lastActivity;
@@ -761,9 +771,16 @@ public class ImmersiveSkillingPlugin extends Plugin
 		if (pileActivity != activity || pileView != props.getView())
 		{
 			clearPile();
-			// Beside you and a little behind: the pile never blocks your view of the work.
-			pileX = at.getX() - fx * 90 - fy * 90;
-			pileY = at.getY() - fy * 90 + fx * 90;
+			// On land, a free tile beside and behind you: never in a wall, a tree or the water, and
+			// never blocking your view of the work. On a boat, your own tile, so it stays on the deck
+			// of every boat from a raft up (issue #2: on a raft the tile behind you is the sea).
+			boolean boat = onBoat();
+			double[] spot = boat ? boatPileSpot(at.getX(), at.getY(), fx, fy) : pileSpot(at, fx, fy);
+			pileSpread = boat ? BOAT_SPREAD : 1;
+			pileX = spot[0];
+			pileY = spot[1];
+			Player player = client.getLocalPlayer();
+			pileYaw = player == null ? 0 : player.getCurrentOrientation();
 			pilePlane = plane;
 			pileView = props.getView();
 			pileActivity = activity;
@@ -771,8 +788,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 			if (activity == Activity.FISHING)
 			{
 				Model basket = props.itemModel(ItemID.BASKET_EMPTY, 200, 0);
-				Props.Prop b = props.launch(basket, Props.Group.BASKET, plane, pileX, pileY, 0, pileX, pileY, 0, 0, 0.01, false, 0,
-					now);
+				Props.Prop b = props.launch(basket, Props.Group.BASKET, plane, pileX, pileY, 0, pileX, pileY, 0, 0, 0.01, false,
+					pileYaw, now);
 				if (b != null)
 				{
 					// The basket pops into place.
@@ -780,23 +797,35 @@ public class ImmersiveSkillingPlugin extends Plugin
 				}
 			}
 		}
-		if (pileCount >= cap)
+		PileLayout.Shape shape = activity == Activity.FISHING ? PileLayout.Shape.BASKET
+			: activity == Activity.WOODCUTTING ? PileLayout.Shape.STACK : PileLayout.Shape.HEAP;
+		boolean full = pileCount >= cap;
+		// A full pile still takes the new item: it lands on top, then sinks in.
+		int[] slot = PileLayout.slot(shape, full ? cap - 1 : pileCount, cap);
+		double angle = pileYaw * Math.PI * 2 / 2048;
+		double cos = Math.cos(angle);
+		double sin = Math.sin(angle);
+		double toX = pileX + (slot[0] * cos - slot[1] * sin) * pileSpread;
+		double toY = pileY + (slot[0] * sin + slot[1] * cos) * pileSpread;
+		double toZ = slot[2] + (full ? PileLayout.LAYER_HEIGHT : 0);
+		int orientation = (slot[3] + pileYaw) & 2047;
+		// Everything already on the pile hops as the new item lands.
+		props.nudge(Props.Group.PILE, now + 0.5);
+		props.nudge(Props.Group.BASKET, now + 0.5);
+		Model model = props.itemModel(itemId, 128, 0);
+		Props.Prop p = props.launch(model, full ? Props.Group.FLOATING : Props.Group.PILE, plane, fromX, fromY, fromZ, toX, toY,
+			toZ, peak, 0.55, true, orientation, now);
+		if (p == null)
 		{
 			return;
 		}
-		int[] slot = PileLayout.slot(pileCount);
-		boolean basket = activity == Activity.FISHING;
-		// In the basket, catches sit higher and closer together.
-		double toX = pileX + (basket ? slot[0] / 2.0 : slot[0]);
-		double toY = pileY + (basket ? slot[1] / 2.0 : slot[1]);
-		double toZ = basket ? 22 + slot[2] : slot[2];
-		Model model = props.itemModel(itemId, 128, 0);
-		Props.Prop p = props.launch(model, Props.Group.PILE, plane, fromX, fromY, fromZ, toX, toY, toZ, peak, 0.55, true,
-			slot[3], now);
-		if (p != null)
+		Props.resize(p, itemId, 128, 0, full ? 0.35 : 0);
+		if (full)
 		{
-			// Sized, so it can shrink away item by item when the pile clears.
-			Props.resize(p, itemId, 128, 0, 0);
+			p.expires = now + 1.0;
+		}
+		else
+		{
 			pileCount++;
 		}
 	}
@@ -999,6 +1028,64 @@ public class ImmersiveSkillingPlugin extends Plugin
 		}
 		double reach = Math.min(d, Math.max(1, size) * TILE / 2.0 - 16);
 		return new double[]{cx + dx / d * reach, cy + dy / d * reach};
+	}
+
+	/**
+	 * WHAT: Where a new pile goes: the middle of a free tile beside and behind you.
+	 * WHY: A fixed spot behind you could be a wall, a tree or the sea.
+	 * PRE: Client thread. (fx, fy) is the way you face, as a unit vector.
+	 * POST: Nothing changes.
+	 * RETURN: {x, y} in local units
+	 * THROWS: Nothing.
+	 */
+	/**
+	 * WHAT: Where a pile goes on a boat: on your own tile, just behind your feet.
+	 * WHY: Boats are small; a tile beside or behind you can be over the water, as on a raft.
+	 * Your own tile is always deck, whatever the boat.
+	 * PRE: (x, y) is where you stand and (fx, fy) the way you face, as a unit vector, in local units.
+	 * POST: Nothing changes.
+	 * RETURN: {x, y} in local units
+	 * THROWS: Nothing.
+	 */
+	static double[] boatPileSpot(double x, double y, double fx, double fy)
+	{
+		return new double[]{x - fx * BOAT_PILE_BACK, y - fy * BOAT_PILE_BACK};
+	}
+
+	/**
+	 * WHAT: Whether you're standing on a boat rather than the main world.
+	 * WHY: Piles go on your own tile on a boat, where the tiles around you may be the sea.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: true on a boat's deck
+	 * THROWS: Nothing.
+	 */
+	private boolean onBoat()
+	{
+		Player player = client.getLocalPlayer();
+		WorldView wv = player == null ? null : player.getWorldView();
+		return wv != null && !wv.isTopLevel();
+	}
+
+	private double[] pileSpot(LocalPoint at, double fx, double fy)
+	{
+		double[] fallback = {at.getX() - fx * 90 - fy * 90, at.getY() - fy * 90 + fx * 90};
+		WorldView wv = viewOf(client.getLocalPlayer());
+		CollisionData[] maps = wv.getCollisionMaps();
+		int plane = wv.getPlane();
+		if (maps == null || plane < 0 || plane >= maps.length || maps[plane] == null)
+		{
+			return fallback;
+		}
+		int[][] flags = maps[plane].getFlags();
+		int[] tile = PileLayout.freeTile(at.getSceneX(), at.getSceneY(), (int) Math.round(fx), (int) Math.round(fy),
+			(x, y) -> x < 0 || y < 0 || x >= flags.length || y >= flags[x].length
+				|| (flags[x][y] & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0);
+		if (tile == null)
+		{
+			return fallback;
+		}
+		return new double[]{tile[0] * TILE + TILE / 2.0, tile[1] * TILE + TILE / 2.0};
 	}
 
 	private Model[] heatModels(int itemId)

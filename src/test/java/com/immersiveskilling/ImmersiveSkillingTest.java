@@ -227,21 +227,93 @@ public class ImmersiveSkillingTest
 		assertEquals(0, heights[2]);
 		assertEquals(PileLayout.LAYER_HEIGHT, heights[3]);
 		assertEquals(PileLayout.LAYER_HEIGHT * 2, heights[5]);
-		assertEquals("The middle layer lies across the bottom one", 512, PileLayout.slot(3)[3]);
-		assertEquals(0, PileLayout.slot(0)[3]);
-	}
-
-	@Test
-	public void biggerPilesGrowToTheSide()
-	{
-		assertEquals(0, PileLayout.slot(6)[2]);
-		assertTrue(PileLayout.slot(6)[0] > PileLayout.slot(2)[0]);
+		// Each row lies across the one below, give or take a hand-stacked wobble.
+		assertTrue("The middle layer lies across the bottom one", turn(PileLayout.slot(3)[3], 512) <= 20);
+		assertTrue(turn(PileLayout.slot(0)[3], 0) <= 20);
 	}
 
 	private static int turn(int a, int b)
 	{
 		int d = Math.abs(a - b) & 2047;
 		return Math.min(d, 2048 - d);
+	}
+
+	@Test
+	public void biggerStacksHaveAWiderBase()
+	{
+		// Ten logs: 4, 3, 2, 1, all in one stack instead of a second one off to the side.
+		for (int i = 0; i < 4; i++)
+		{
+			assertEquals(0, PileLayout.slot(PileLayout.Shape.STACK, i, 10)[2]);
+		}
+		assertEquals(PileLayout.LAYER_HEIGHT, PileLayout.slot(PileLayout.Shape.STACK, 4, 10)[2]);
+		assertEquals(PileLayout.LAYER_HEIGHT * 3, PileLayout.slot(PileLayout.Shape.STACK, 9, 10)[2]);
+		assertTrue(Math.abs(PileLayout.slot(PileLayout.Shape.STACK, 0, 10)[0]) > Math.abs(PileLayout.slot(PileLayout.Shape.STACK, 0, 6)[0]));
+	}
+
+	@Test
+	public void oreAndHarvestsHeapUp()
+	{
+		Set<String> spots = new HashSet<>();
+		int top = 0;
+		for (int i = 0; i < 11; i++)
+		{
+			int[] s = PileLayout.slot(PileLayout.Shape.HEAP, i, 10);
+			spots.add(s[0] + "," + s[1] + "," + s[2]);
+			top = Math.max(top, s[2]);
+			if (i < 5)
+			{
+				assertEquals("The first five ring the ground", 0, s[2]);
+			}
+		}
+		assertEquals("No two in the same spot", 11, spots.size());
+		assertEquals("The last one crowns the heap", top, PileLayout.slot(PileLayout.Shape.HEAP, 10, 10)[2]);
+		assertEquals(0, PileLayout.slot(PileLayout.Shape.HEAP, 10, 10)[0]);
+	}
+
+	@Test
+	public void catchesSitInTheBasket()
+	{
+		for (int i = 0; i < 10; i++)
+		{
+			int[] s = PileLayout.slot(PileLayout.Shape.BASKET, i, 10);
+			assertTrue("Above the basket floor", s[2] >= 22);
+			assertTrue("Inside the basket", Math.hypot(s[0], s[1]) <= 16);
+		}
+	}
+
+	@Test
+	public void pilesGoOnAFreeTileBesideYou()
+	{
+		// Facing north (0, 1): behind-left is (-1, -1) from you.
+		assertArrayEquals(new int[]{9, 9}, PileLayout.freeTile(10, 10, 0, 1, (x, y) -> false));
+		// That tile is a wall: try behind-right instead.
+		assertArrayEquals(new int[]{11, 9}, PileLayout.freeTile(10, 10, 0, 1, (x, y) -> x == 9 && y == 9));
+		// Never the tile you're working on, and nothing at all when you're boxed in.
+		Set<String> tried = new HashSet<>();
+		PileLayout.freeTile(10, 10, 0, 1, (x, y) -> tried.add(x + "," + y) || true);
+		assertFalse(tried.contains("10,11"));
+		assertFalse(tried.contains("10,10"));
+		assertNull(PileLayout.freeTile(10, 10, 0, 1, (x, y) -> true));
+	}
+
+	@Test
+	public void onABoatThePileStaysOnYourTile()
+	{
+		// Issue #2: on a raft the tile behind you is the sea. Every slot of every full pile, turned
+		// any way, must stay inside your own tile (64 units from its middle).
+		for (PileLayout.Shape shape : PileLayout.Shape.values())
+		{
+			for (int i = 0; i < 12; i++)
+			{
+				int[] s = PileLayout.slot(shape, Math.min(i, 9), 10);
+				double reach = Math.hypot(s[0], s[1]) * ImmersiveSkillingPlugin.BOAT_SPREAD + ImmersiveSkillingPlugin.BOAT_PILE_BACK;
+				assertTrue(shape + " slot " + i + " reaches " + reach, reach < 64);
+			}
+		}
+		double[] spot = ImmersiveSkillingPlugin.boatPileSpot(1000, 1000, 0, 1);
+		assertEquals("Just behind you", 1000 - ImmersiveSkillingPlugin.BOAT_PILE_BACK, spot[1], 1e-9);
+		assertEquals(1000, spot[0], 1e-9);
 	}
 
 	@Test
@@ -391,6 +463,16 @@ public class ImmersiveSkillingTest
 			java.nio.charset.StandardCharsets.UTF_8);
 		assertTrue("Bump ImmersiveSkillingPlugin.VERSION with the release",
 			props.contains("version=" + ImmersiveSkillingPlugin.VERSION));
+	}
+
+	@Test
+	public void bugLinkCarriesTheVersion()
+	{
+		String link = ImmersiveSkillingPanel.bugLink();
+		assertTrue(link.startsWith("https://github.com/AoceanP/immersive-skilling/issues/new?labels=bug&body="));
+		assertTrue(link.contains("Plugin%20version%3A%20" + ImmersiveSkillingPlugin.VERSION + "%0A"));
+		assertFalse("No raw spaces or new lines in a link", link.contains(" ") || link.contains("\n"));
+		assertEquals("a%20b%0Ac%3A%28d%29", ImmersiveSkillingPanel.encode("a b\nc:(d)"));
 	}
 
 	@Test
