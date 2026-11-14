@@ -41,7 +41,8 @@ Each account keeps a **rare moments log** in the sidebar: your total, how many s
 ## Piles
 
 - **Each skill piles its own way:** logs in a crisscross firewood stack (4, 3, 2, 1 for a big pile), ore and harvests in a rounded heap, catches nested in a basket that pops into place.
-- **Always on a free tile** beside and behind you, turned to match you. Never in a wall, a tree or the water. On a boat it sits on your own tile, packed a little closer, so it stays on the deck of any boat, rafts included.
+- **A pile for every resource:** each tree, rock, fishing spot and patch gets its own pile on a free tile right beside it, on the side nearest you. Move between trees and each keeps its own stack (up to four piles at once; a fifth shrinks the oldest away). If the resource can't be found, the pile goes on a free tile beside and behind you, turned to match you.
+- **Never in the way:** never in a wall, a tree or the water. On a boat it sits on your own tile, packed a little closer, so it stays on the deck of any boat, rafts included.
 - **Alive:** everything on the pile hops when a new item lands. A full pile still takes your items: they land on top and sink in.
 - **Clears gently:** walk away or bank and the pile shrinks away item by item.
 

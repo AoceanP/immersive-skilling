@@ -65,6 +65,8 @@ final class Props
 		final RuneLiteObject object;
 		// Not final: a pile that's clearing becomes FLOATING, so a new pile can start at once.
 		Group group;
+		// The pile it sits on, or -1, so one pile can hop or clear without the others.
+		int pile = -1;
 		final int plane;
 		// The worldview it lives in: the main world, or a boat's deck so it sails with you.
 		final int view;
@@ -312,6 +314,49 @@ final class Props
 	 * RETURN: Nothing.
 	 * THROWS: Nothing.
 	 */
+	/**
+	 * WHAT: Makes one pile's items hop, as a new item lands on it.
+	 * WHY: With several piles out, only the one being added to should move.
+	 * PRE: Client thread.
+	 * POST: That pile's resting items hop once.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void nudgePile(int pile, double at)
+	{
+		for (Prop p : props)
+		{
+			if (p.pile == pile && !p.bounce)
+			{
+				p.nudgeStart = at;
+			}
+		}
+	}
+
+	/**
+	 * WHAT: Shrinks one pile away item by item, leaving the others.
+	 * WHY: Walking away from one tree clears its pile, not the pile at the next tree.
+	 * PRE: Client thread. now is the current time in seconds.
+	 * POST: The pile's props shrink and are removed shortly.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void dissolvePile(int pile, double now)
+	{
+		int i = 0;
+		for (Prop p : props)
+		{
+			if (p.pile == pile && p.group != Group.FLOATING)
+			{
+				p.group = Group.FLOATING;
+				p.pile = -1;
+				p.expires = Math.min(p.expires, now + 0.35 + i * 0.05);
+				p.shrinkOut = 0.35;
+				i++;
+			}
+		}
+	}
+
 	void nudge(Group group, double at)
 	{
 		for (Prop p : props)

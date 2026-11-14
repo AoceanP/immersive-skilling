@@ -95,12 +95,15 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.2.0";
+	static final String VERSION = "1.3.0";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
-	/** Piles clear when you're this far away (in tiles) and "Walk away" is chosen. */
-	static final int WALK_AWAY_TILES = 3;
+	/** Piles clear when you're this far away (in tiles) and "Walk away" is chosen. Far enough to move
+	 * between the trees or rocks of one spot without losing their piles. */
+	static final int WALK_AWAY_TILES = 8;
+	/** At most this many piles at once; a new one past it shrinks the oldest away. */
+	static final int MAX_PILES = 4;
 	/** Piles always clear when you're this far away (in tiles). */
 	static final int FAR_TILES = 20;
 	/** Ambient sparks and chips keep going this long (seconds) after the last item. */
@@ -143,17 +146,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 	// The last item each gathering skill gave you, for when the next one goes into a bag instead.
 	private final Map<Skill, Integer> lastItem = new EnumMap<>(Skill.class);
 
-	// The current pile (or basket) beside you.
-	private Activity pileActivity;
-	private double pileX;
-	private double pileY;
-	private int pilePlane;
-	private int pileView = -1;
-	private int pileCount;
-	// The way you faced when the pile started (0-2047), so the pile lines up with you.
-	private int pileYaw;
-	// How spread out the pile is: 1 on land, closer on a boat.
-	private double pileSpread = 1;
+	// A pile (or basket) beside each resource you've gathered from, and the one added to last.
+	private final List<Pile> piles = new ArrayList<>();
+	private Pile lastPile;
+	private int nextPileId;
 
 	// The last activity, for ambient effects while you keep working.
 	private Activity lastActivity;
@@ -174,6 +170,38 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private volatile String hint = "";
 	private volatile int statusCount;
 	private volatile int statusCap;
+
+	/**
+	 * One pile beside the resource it came from: where it is, which way it's turned, and how full.
+	 */
+	private static final class Pile
+	{
+		final int id;
+		final Activity activity;
+		final String key;
+		final double x;
+		final double y;
+		final int plane;
+		final int view;
+		final int yaw;
+		// How spread out it is: 1 on land, closer on a boat.
+		final double spread;
+		int count;
+		double lastUsed;
+
+		Pile(int id, Activity activity, String key, double x, double y, int plane, int view, int yaw, double spread)
+		{
+			this.id = id;
+			this.activity = activity;
+			this.key = key;
+			this.x = x;
+			this.y = y;
+			this.plane = plane;
+			this.view = view;
+			this.yaw = yaw;
+			this.spread = spread;
+		}
+	}
 
 	/**
 	 * An item that arrived in the inventory, with what left it in the same change. When nothing
@@ -256,8 +284,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 		matchedXp.clear();
 		checkedXp.clear();
 		pending.clear();
-		pileActivity = null;
-		pileCount = 0;
+		piles.clear();
+		lastPile = null;
 		lastActivity = null;
 		status = "";
 		hint = "";
@@ -361,14 +389,23 @@ public class ImmersiveSkillingPlugin extends Plugin
 		WorldView wv = viewOf(player);
 		overlay.setView(wv.getId(), wv.getPlane());
 		LocalPoint at = player.getLocalLocation();
-		if (pileActivity != null)
+		boolean walkAway = config.clearWhen() == ImmersiveSkillingConfig.ClearWhen.WALK_AWAY;
+		Iterator<Pile> each = piles.iterator();
+		while (each.hasNext())
 		{
-			double dist = Math.hypot(at.getX() - pileX, at.getY() - pileY) / TILE;
-			boolean walkedAway = config.clearWhen() == ImmersiveSkillingConfig.ClearWhen.WALK_AWAY && dist > WALK_AWAY_TILES;
+			Pile pile = each.next();
+			double dist = Math.hypot(at.getX() - pile.x, at.getY() - pile.y) / TILE;
 			// Boarding or leaving a boat moves you to another worldview, so the pile can't follow.
-			if (walkedAway || dist > FAR_TILES || wv.getPlane() != pilePlane || wv.getId() != pileView)
+			if ((walkAway && dist > WALK_AWAY_TILES) || dist > FAR_TILES || wv.getPlane() != pile.plane || wv.getId() != pile.view)
 			{
-				clearPile();
+				props.dissolvePile(pile.id, seconds());
+				each.remove();
+				if (pile == lastPile)
+				{
+					lastPile = null;
+					statusCount = 0;
+					refreshPanel();
+				}
 			}
 		}
 		syncRareLog();
@@ -779,7 +816,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 				if (config.logPile())
 				{
 					// The log drops from the trunk and tumbles onto the pile.
-					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 90, 60, now);
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], src[2], src[3], (int) src[4], 90, 60, now);
 				}
 				break;
 			case FISHING:
@@ -792,7 +829,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 				}
 				if (config.catchBasket())
 				{
-					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 10, 130, now);
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], src[2], src[3], (int) src[4], 10, 130, now);
 				}
 				break;
 			case MINING:
@@ -806,7 +843,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 				if (config.oreChunks())
 				{
 					// The ore breaks off the face and bounces onto the heap.
-					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 45, 60, now);
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], src[2], src[3], (int) src[4], 45, 60, now);
 				}
 				break;
 			case SMELTING:
@@ -852,7 +889,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 				if (config.harvestPile())
 				{
 					// Pulled out of the patch, it pops up and drops onto the heap.
-					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], 15, 80, now);
+					addToPile(activity, itemId, at, fx, fy, plane, src[0], src[1], src[2], src[3], (int) src[4], 15, 80, now);
 				}
 				break;
 			case HUNTER:
@@ -870,8 +907,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 		{
 			// Loot is shown over you, where it lands; the rest where it was made.
 			boolean overYou = activity == Activity.THIEVING || activity == Activity.ALCHING || activity == Activity.HUNTER;
-			double popX = pileActivity == activity ? pileX : overYou ? at.getX() : targetX;
-			double popY = pileActivity == activity ? pileY : overYou ? at.getY() : targetY;
+			boolean onPile = lastPile != null && lastPile.activity == activity && lastPile.lastUsed == now;
+			double popX = onPile ? lastPile.x : overYou ? at.getX() : targetX;
+			double popY = onPile ? lastPile.y : overYou ? at.getY() : targetY;
 			overlay.addPop(new EffectsOverlay.Pop(itemId, popText, popX, popY, plane, now));
 		}
 		props.setGolden(false);
@@ -883,54 +921,39 @@ public class ImmersiveSkillingPlugin extends Plugin
 	}
 
 	private void addToPile(Activity activity, int itemId, LocalPoint at, double fx, double fy, int plane,
-		double fromX, double fromY, double fromZ, double peak, double now)
+		double fromX, double fromY, double midX, double midY, int size, double fromZ, double peak, double now)
 	{
 		int cap = config.pileSize().getCount();
-		if (pileActivity != activity || pileView != props.getView())
+		boolean boat = onBoat();
+		String key = pileKey(activity, boat, size, midX, midY, plane, props.getView());
+		Pile pile = null;
+		for (Pile each : piles)
 		{
-			clearPile();
-			// On land, a free tile beside and behind you: never in a wall, a tree or the water, and
-			// never blocking your view of the work. On a boat, your own tile, so it stays on the deck
-			// of every boat from a raft up (issue #2: on a raft the tile behind you is the sea).
-			boolean boat = onBoat();
-			double[] spot = boat ? boatPileSpot(at.getX(), at.getY(), fx, fy) : pileSpot(at, fx, fy);
-			pileSpread = boat ? BOAT_SPREAD : 1;
-			pileX = spot[0];
-			pileY = spot[1];
-			Player player = client.getLocalPlayer();
-			pileYaw = player == null ? 0 : player.getCurrentOrientation();
-			pilePlane = plane;
-			pileView = props.getView();
-			pileActivity = activity;
-			pileCount = 0;
-			if (activity == Activity.FISHING)
+			if (each.key.equals(key))
 			{
-				Model basket = props.itemModel(ItemID.BASKET_EMPTY, 200, 0);
-				Props.Prop b = props.launch(basket, Props.Group.BASKET, plane, pileX, pileY, 0, pileX, pileY, 0, 0, 0.01, false,
-					pileYaw, now);
-				if (b != null)
-				{
-					b.golden = false;
-					// The basket pops into place.
-					Props.resize(b, ItemID.BASKET_EMPTY, 200, 0.25, 0);
-				}
+				pile = each;
 			}
 		}
+		if (pile == null)
+		{
+			pile = newPile(activity, key, at, fx, fy, plane, midX, midY, size, boat, now);
+		}
+		pile.lastUsed = now;
+		lastPile = pile;
 		PileLayout.Shape shape = activity == Activity.FISHING ? PileLayout.Shape.BASKET
 			: activity == Activity.WOODCUTTING ? PileLayout.Shape.STACK : PileLayout.Shape.HEAP;
-		boolean full = pileCount >= cap;
+		boolean full = pile.count >= cap;
 		// A full pile still takes the new item: it lands on top, then sinks in.
-		int[] slot = PileLayout.slot(shape, full ? cap - 1 : pileCount, cap);
-		double angle = pileYaw * Math.PI * 2 / 2048;
+		int[] slot = PileLayout.slot(shape, full ? cap - 1 : pile.count, cap);
+		double angle = pile.yaw * Math.PI * 2 / 2048;
 		double cos = Math.cos(angle);
 		double sin = Math.sin(angle);
-		double toX = pileX + (slot[0] * cos - slot[1] * sin) * pileSpread;
-		double toY = pileY + (slot[0] * sin + slot[1] * cos) * pileSpread;
+		double toX = pile.x + (slot[0] * cos - slot[1] * sin) * pile.spread;
+		double toY = pile.y + (slot[0] * sin + slot[1] * cos) * pile.spread;
 		double toZ = slot[2] + (full ? PileLayout.LAYER_HEIGHT : 0);
-		int orientation = (slot[3] + pileYaw) & 2047;
-		// Everything already on the pile hops as the new item lands.
-		props.nudge(Props.Group.PILE, now + 0.5);
-		props.nudge(Props.Group.BASKET, now + 0.5);
+		int orientation = (slot[3] + pile.yaw) & 2047;
+		// Everything already on this pile hops as the new item lands.
+		props.nudgePile(pile.id, now + 0.5);
 		Model model = props.itemModel(itemId, 128, 0);
 		Props.Prop p = props.launch(model, full ? Props.Group.FLOATING : Props.Group.PILE, plane, fromX, fromY, fromZ, toX, toY,
 			toZ, peak, 0.55, true, orientation, now);
@@ -945,8 +968,121 @@ public class ImmersiveSkillingPlugin extends Plugin
 		}
 		else
 		{
-			pileCount++;
+			p.pile = pile.id;
+			pile.count++;
 		}
+	}
+
+	/**
+	 * WHAT: Which pile an item goes on: one per resource (the tree, rock, fishing spot or patch's
+	 * tile), one shared pile when no resource was found, and one on your own tile on a boat.
+	 * WHY: Each resource keeps its own pile instead of everything landing in one place.
+	 * PRE: size is the resource's width in tiles, or 0 when none was found.
+	 * POST: Nothing changes.
+	 * RETURN: the key; items with the same key share a pile
+	 * THROWS: Nothing.
+	 */
+	static String pileKey(Activity activity, boolean boat, int size, double midX, double midY, int plane, int view)
+	{
+		if (boat)
+		{
+			return activity + ":boat:" + view;
+		}
+		if (size <= 0)
+		{
+			return activity + ":here:" + plane + ":" + view;
+		}
+		return activity + ":" + (int) Math.floor(midX / TILE) + "," + (int) Math.floor(midY / TILE) + ":" + plane + ":" + view;
+	}
+
+	/**
+	 * WHAT: Starts a new pile: beside its resource on land, on your own tile on a boat, or behind
+	 * you when the resource wasn't found.
+	 * WHY: Several piles can be out at once; past MAX_PILES the oldest shrinks away first.
+	 * PRE: Client thread.
+	 * POST: The pile is in the list (and a basket is out for fishing).
+	 * RETURN: the new pile
+	 * THROWS: Nothing.
+	 */
+	private Pile newPile(Activity activity, String key, LocalPoint at, double fx, double fy, int plane, double midX,
+		double midY, int size, boolean boat, double now)
+	{
+		if (piles.size() >= MAX_PILES)
+		{
+			Pile oldest = piles.get(0);
+			for (Pile each : piles)
+			{
+				if (each.lastUsed < oldest.lastUsed)
+				{
+					oldest = each;
+				}
+			}
+			props.dissolvePile(oldest.id, now);
+			piles.remove(oldest);
+		}
+		double[] spot = null;
+		if (boat)
+		{
+			// On a boat, your own tile, so it stays on the deck of every boat from a raft up
+			// (issue #2: on a raft the tile behind you is the sea).
+			spot = boatPileSpot(at.getX(), at.getY(), fx, fy);
+		}
+		else if (size > 0)
+		{
+			spot = besideResource(at, midX, midY, size);
+		}
+		if (spot == null)
+		{
+			// A free tile beside and behind you: never in a wall, a tree or the water.
+			spot = pileSpot(at, fx, fy);
+		}
+		Player player = client.getLocalPlayer();
+		int yaw = player == null ? 0 : player.getCurrentOrientation();
+		Pile pile = new Pile(nextPileId++, activity, key, spot[0], spot[1], plane, props.getView(), yaw, boat ? BOAT_SPREAD : 1);
+		piles.add(pile);
+		if (activity == Activity.FISHING)
+		{
+			Model basket = props.itemModel(ItemID.BASKET_EMPTY, 200, 0);
+			Props.Prop b = props.launch(basket, Props.Group.BASKET, plane, pile.x, pile.y, 0, pile.x, pile.y, 0, 0, 0.01, false,
+				yaw, now);
+			if (b != null)
+			{
+				b.golden = false;
+				b.pile = pile.id;
+				// The basket pops into place.
+				Props.resize(b, ItemID.BASKET_EMPTY, 200, 0.25, 0);
+			}
+		}
+		return pile;
+	}
+
+	/**
+	 * WHAT: The middle of a free tile right beside a resource, nearest you, not used by another pile.
+	 * WHY: The tree's logs pile up at that tree; the next tree gets its own pile.
+	 * PRE: Client thread. (midX, midY) is the resource's middle in local units.
+	 * POST: Nothing changes.
+	 * RETURN: {x, y} in local units, or null if no tile beside it is free
+	 * THROWS: Nothing.
+	 */
+	private double[] besideResource(LocalPoint at, double midX, double midY, int size)
+	{
+		WorldView wv = viewOf(client.getLocalPlayer());
+		CollisionData[] maps = wv.getCollisionMaps();
+		int plane = wv.getPlane();
+		if (maps == null || plane < 0 || plane >= maps.length || maps[plane] == null)
+		{
+			return null;
+		}
+		int[][] flags = maps[plane].getFlags();
+		java.util.Set<Long> taken = new java.util.HashSet<>();
+		for (Pile each : piles)
+		{
+			taken.add(PileLayout.key((int) Math.floor(each.x / TILE), (int) Math.floor(each.y / TILE)));
+		}
+		int[] tile = PileLayout.tileBeside(midX, midY, size, at.getSceneX(), at.getSceneY(),
+			(x, y) -> x < 0 || y < 0 || x >= flags.length || y >= flags[x].length
+				|| (flags[x][y] & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0, taken);
+		return tile == null ? null : new double[]{tile[0] * TILE + TILE / 2.0, tile[1] * TILE + TILE / 2.0};
 	}
 
 	/**
@@ -992,7 +1128,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 * fishing spot two tiles out are somewhere else.
 	 * PRE: Client thread. (tx, ty) is the tile in front of you, used if nothing is found.
 	 * POST: Nothing changes.
-	 * RETURN: {x, y, middleX, middleY} in local units
+	 * RETURN: {x, y, middleX, middleY, size in tiles (0 when nothing was found)} in local units
 	 * THROWS: Nothing.
 	 */
 	private double[] source(Activity activity, LocalPoint at, double tx, double ty)
@@ -1017,22 +1153,23 @@ public class ImmersiveSkillingPlugin extends Plugin
 				if (spotView != null && spotView.getId() == viewOf(player).getId() && spot.getLocalLocation() != null)
 				{
 					LocalPoint s = spot.getLocalLocation();
-					return new double[]{s.getX(), s.getY(), s.getX(), s.getY()};
+					return new double[]{s.getX(), s.getY(), s.getX(), s.getY(), 1};
 				}
-				return new double[]{tx, ty, tx, ty};
+				return new double[]{tx, ty, tx, ty, 0};
 			}
 			default:
-				return new double[]{tx, ty, tx, ty};
+				return new double[]{tx, ty, tx, ty, 0};
 		}
 		GameObject object = workObject(at, actions);
 		if (object == null || object.getLocalLocation() == null)
 		{
-			return new double[]{tx, ty, tx, ty};
+			return new double[]{tx, ty, tx, ty, 0};
 		}
 		double cx = object.getLocalLocation().getX();
 		double cy = object.getLocalLocation().getY();
-		double[] e = edge(cx, cy, Math.max(object.sizeX(), object.sizeY()), at.getX(), at.getY());
-		return new double[]{e[0], e[1], cx, cy};
+		int size = Math.max(1, Math.max(object.sizeX(), object.sizeY()));
+		double[] e = edge(cx, cy, size, at.getX(), at.getY());
+		return new double[]{e[0], e[1], cx, cy, size};
 	}
 
 	/**
@@ -2270,8 +2407,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 			props.dissolve(Props.Group.PILE, seconds());
 			props.dissolve(Props.Group.BASKET, seconds());
 		}
-		pileActivity = null;
-		pileCount = 0;
+		piles.clear();
+		lastPile = null;
 		statusCount = 0;
 		refreshPanel();
 	}
@@ -2283,8 +2420,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 			props.clear(null);
 		}
 		overlay.clear();
-		pileActivity = null;
-		pileCount = 0;
+		piles.clear();
+		lastPile = null;
 		lastActivity = null;
 		status = "";
 		statusCount = 0;
@@ -2295,7 +2432,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	{
 		status = activity.getDisplayName();
 		boolean piles = activity.isGathering();
-		statusCount = piles ? pileCount : 0;
+		statusCount = piles && lastPile != null && lastPile.activity == activity ? lastPile.count : 0;
 		statusCap = piles ? config.pileSize().getCount() : 0;
 		refreshPanel();
 	}

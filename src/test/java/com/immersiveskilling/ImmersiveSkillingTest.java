@@ -379,6 +379,44 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void eachResourceGetsItsOwnPileBesideIt()
+	{
+		java.util.Set<Long> none = new HashSet<>();
+		// A tree at (10, 10), you standing two tiles south: the pile goes on the tile between you.
+		int[] t = PileLayout.tileBeside(10 * 128 + 64, 10 * 128 + 64, 1, 10, 8, (x, y) -> false, none);
+		assertEquals(10, t[0]);
+		assertEquals(9, t[1]);
+		// That tile is water: the next nearest tile beside the tree instead.
+		int[] dry = PileLayout.tileBeside(10 * 128 + 64, 10 * 128 + 64, 1, 10, 8, (x, y) -> x == 10 && y == 9, none);
+		assertEquals(1, Math.abs(dry[0] - 10) + Math.abs(dry[1] - 9));
+		// Never on the tree itself or on you, and never on another pile's tile.
+		java.util.Set<Long> taken = new HashSet<>(java.util.Collections.singleton(PileLayout.key(10, 9)));
+		int[] next = PileLayout.tileBeside(10 * 128 + 64, 10 * 128 + 64, 1, 10, 9, (x, y) -> false, taken);
+		assertFalse(next[0] == 10 && next[1] == 10);
+		assertFalse(next[0] == 10 && next[1] == 9);
+		// A big 2x2 tree: the pile sits just outside it.
+		int[] big = PileLayout.tileBeside(20 * 128, 20 * 128, 2, 20, 16, (x, y) -> false, none);
+		assertEquals(18, big[1]);
+		// Everything blocked: no tile.
+		assertNull(PileLayout.tileBeside(10 * 128 + 64, 10 * 128 + 64, 1, 10, 8, (x, y) -> true, none));
+	}
+
+	@Test
+	public void pilesAreKeptPerResource()
+	{
+		String treeA = ImmersiveSkillingPlugin.pileKey(Activity.WOODCUTTING, false, 1, 10 * 128 + 64, 10 * 128 + 64, 0, -1);
+		String treeB = ImmersiveSkillingPlugin.pileKey(Activity.WOODCUTTING, false, 1, 13 * 128 + 64, 10 * 128 + 64, 0, -1);
+		assertFalse("Two trees, two piles", treeA.equals(treeB));
+		assertEquals("The same tree, the same pile", treeA,
+			ImmersiveSkillingPlugin.pileKey(Activity.WOODCUTTING, false, 1, 10 * 128 + 70, 10 * 128 + 50, 0, -1));
+		assertFalse("A rock on that tile is its own pile",
+			treeA.equals(ImmersiveSkillingPlugin.pileKey(Activity.MINING, false, 1, 10 * 128 + 64, 10 * 128 + 64, 0, -1)));
+		assertEquals("On a boat, one pile on your tile", ImmersiveSkillingPlugin.pileKey(Activity.FISHING, true, 1, 1, 1, 0, 3),
+			ImmersiveSkillingPlugin.pileKey(Activity.FISHING, true, 1, 900, 900, 0, 3));
+		assertTrue(ImmersiveSkillingPlugin.MAX_PILES >= 2 && ImmersiveSkillingPlugin.WALK_AWAY_TILES >= 5);
+	}
+
+	@Test
 	public void workObjectsAreFoundByTheirActions()
 	{
 		assertTrue(ImmersiveSkillingPlugin.hasAction(new String[]{null, "Chop down", "Examine"}, "chop", "cut"));

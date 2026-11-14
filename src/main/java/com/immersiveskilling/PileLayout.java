@@ -211,4 +211,61 @@ final class PileLayout
 		}
 		return null;
 	}
+
+	/**
+	 * WHAT: Picks the tile for a resource's own pile: a free tile right beside the tree, rock,
+	 * fishing spot or patch, the one nearest you.
+	 * WHY: Each resource keeps its own pile where it grew, instead of everything you gather
+	 * landing in one pile behind you.
+	 * PRE: (midX, midY) is the resource's middle in local units (a tile is 128); size is its width
+	 * in tiles (1 or more); (px, py) is your scene tile. blocked says whether a tile can't be
+	 * walked on (water, walls, off the map); taken holds tiles other piles already use, as key(x, y).
+	 * POST: Nothing changes.
+	 * RETURN: {x, y} of the scene tile, or null if every tile around the resource is blocked or taken
+	 * THROWS: Nothing.
+	 */
+	static int[] tileBeside(double midX, double midY, int size, int px, int py, BiPredicate<Integer, Integer> blocked,
+		java.util.Set<Long> taken)
+	{
+		double half = Math.max(1, size) * 64.0;
+		int cx = (int) Math.floor(midX / 128);
+		int cy = (int) Math.floor(midY / 128);
+		int reach = Math.max(1, size) / 2 + 2;
+		int[] best = null;
+		long bestDistance = Long.MAX_VALUE;
+		for (int x = cx - reach; x <= cx + reach; x++)
+		{
+			for (int y = cy - reach; y <= cy + reach; y++)
+			{
+				double ax = Math.abs(x * 128 + 64 - midX);
+				double ay = Math.abs(y * 128 + 64 - midY);
+				boolean onResource = ax < half && ay < half;
+				boolean beside = ax < half + 128 && ay < half + 128;
+				if (onResource || !beside || (x == px && y == py) || taken.contains(key(x, y)) || blocked.test(x, y))
+				{
+					continue;
+				}
+				long distance = (long) (x - px) * (x - px) + (long) (y - py) * (y - py);
+				if (distance < bestDistance)
+				{
+					bestDistance = distance;
+					best = new int[]{x, y};
+				}
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * WHAT: One number for a scene tile, for sets of taken tiles.
+	 * WHY: Piles mustn't land on top of each other.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: the key
+	 * THROWS: Nothing.
+	 */
+	static long key(int x, int y)
+	{
+		return ((long) x << 32) ^ (y & 0xffffffffL);
+	}
 }
