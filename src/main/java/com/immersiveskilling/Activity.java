@@ -54,7 +54,8 @@ enum Activity
 	FARMING("Farming"),
 	HUNTER("Hunter"),
 	AGILITY("Agility"),
-	CONSTRUCTION("Construction");
+	CONSTRUCTION("Construction"),
+	SAILING("Sailing");
 
 	/** Fish that don't start with "raw": eels, minnows and the aerial fishing catches. */
 	private static final java.util.Set<String> OTHER_CATCHES = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -175,6 +176,45 @@ enum Activity
 		{
 			// Nails and cloth go too, but the plank is what you see.
 			return name.contains("plank") ? CONSTRUCTION : null;
+		}
+		return null;
+	}
+
+	/**
+	 * WHAT: Which part of Sailing an item belongs to: salvage hauled up by your hook, finds
+	 * sorted out of salvage at a salvaging station, or courier crates handed over at a ledger table.
+	 * WHY: Sailing XP comes with very different items, and sorting can give almost anything, so
+	 * the item alone can't say what happened; what left the inventory with it can.
+	 * PRE: gained is the item's name (for a delivery, the crate that left); lost holds the names of
+	 * what left the inventory in the same change; used is true when nothing arrived.
+	 * POST: Nothing changes.
+	 * RETURN: "salvage", "sort", "deliver", or null when it isn't one the plugin shows
+	 * THROWS: Nothing.
+	 */
+	static String sailing(String gained, java.util.List<String> lost, boolean used)
+	{
+		if (gained == null)
+		{
+			return null;
+		}
+		String name = gained.toLowerCase(Locale.ROOT);
+		if (used)
+		{
+			return name.startsWith("crate of ") ? "deliver" : null;
+		}
+		if (name.endsWith(" salvage"))
+		{
+			return "salvage";
+		}
+		if (lost != null)
+		{
+			for (String l : lost)
+			{
+				if (l != null && l.toLowerCase(Locale.ROOT).endsWith(" salvage"))
+				{
+					return "sort";
+				}
+			}
 		}
 		return null;
 	}

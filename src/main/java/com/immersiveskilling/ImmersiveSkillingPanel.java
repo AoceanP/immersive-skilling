@@ -187,6 +187,10 @@ class ImmersiveSkillingPanel extends PluginPanel
 		stack.add(skillCard("Construction", "The plank flies into place", Activity.CONSTRUCTION,
 			row("Plank flight", "plankFlight", config::plankFlight),
 			row("Dust and sparks", "buildDust", config::buildDust)));
+		stack.add(skillCard("Sailing", "Salvage, sorting and cargo", Activity.SAILING,
+			row("Salvage haul", "salvageHaul", config::salvageHaul),
+			row("Spray", "seaSpray", config::seaSpray),
+			row("Cargo delivery", "cargoFlight", config::cargoFlight)));
 
 		stack.add(rareCard());
 

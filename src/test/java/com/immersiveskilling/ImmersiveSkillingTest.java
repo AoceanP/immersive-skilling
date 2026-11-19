@@ -24,6 +24,8 @@
  */
 package com.immersiveskilling;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import net.runelite.api.Skill;
@@ -182,7 +184,7 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
-	public void onlyTheSixteenSkillsAreWatched()
+	public void onlyTheSeventeenSkillsAreWatched()
 	{
 		int shown = 0;
 		for (Skill s : Skill.values())
@@ -190,7 +192,8 @@ public class ImmersiveSkillingTest
 			shown += ImmersiveSkillingPlugin.isShown(s) ? 1 : 0;
 		}
 		// Cooking is left to Immersive Cooking; combat skills are never touched.
-		assertEquals(16, shown);
+		assertEquals(17, shown);
+		assertTrue("Sailing joined in 1.4.0", ImmersiveSkillingPlugin.isShown(Skill.SAILING));
 		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.ATTACK) || ImmersiveSkillingPlugin.isShown(Skill.SLAYER));
 		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.COOKING));
 	}
@@ -735,5 +738,28 @@ public class ImmersiveSkillingTest
 			int uses = src.split("getTopLevelWorldView\\(", -1).length - 1;
 			assertTrue(file + " places effects in the main world", uses <= (file.startsWith("Immersive") ? 1 : 0));
 		}
+	}
+
+	@Test
+	public void sailingIsToldApartByWhatLeftWithTheItem()
+	{
+		assertEquals("salvage", Activity.sailing("Small salvage", Collections.emptyList(), false));
+		assertEquals("salvage", Activity.sailing("Fremennik salvage", null, false));
+		assertEquals("Sorting gives almost anything", "sort",
+			Activity.sailing("Rusty coin", Arrays.asList("Large salvage"), false));
+		assertEquals("deliver", Activity.sailing("Crate of fish (Port Sarim)", Collections.emptyList(), true));
+		assertNull("Picking crates up gives no XP and isn't a delivery",
+			Activity.sailing("Crate of fish (Port Sarim)", Collections.emptyList(), false));
+		assertNull("Anything else with Sailing XP is left alone", Activity.sailing("Coins", Arrays.asList("Shark"), false));
+		assertNull(Activity.sailing(null, null, false));
+		assertTrue("Sorting waits for the tick's gear swaps", ImmersiveSkillingPlugin.takesAnyItem(Skill.SAILING));
+	}
+
+	@Test
+	public void deliveredCratesCountDown()
+	{
+		assertEquals("-3 Crate of rum (The Pandemonium)",
+			ImmersiveSkillingPlugin.popText(Activity.SAILING, 3, "Crate of rum (The Pandemonium)"));
+		assertEquals("+1 Small salvage", ImmersiveSkillingPlugin.popText(Activity.SAILING, 1, "Small salvage"));
 	}
 }

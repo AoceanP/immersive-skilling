@@ -23,6 +23,7 @@ Purely visual effects that make skilling feel alive. Everything is drawn on your
 | **Hunter** | A puff where the catch came from, and it flies from the trap or net to you. |
 | **Agility** | A puff of dust where you land after each obstacle, and the XP rises over you. |
 | **Construction** | The plank flies from you to what you build, in a cloud of sawdust and hammer sparks. |
+| **Sailing** | Salvage swings up from your salvaging hook onto a pile on deck, with spray. At a salvaging station each find bursts out of the salvage to you. Trawled fish come up out of your net, and courier crates swing from you onto the ledger table. |
 
 Each item you get also pops up with how many you got and its name, such as "+15 Arrow shaft". Items that appear grow in with a little overshoot, spin and slow to a stop, then shrink away.
 

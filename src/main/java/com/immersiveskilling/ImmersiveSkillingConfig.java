@@ -183,10 +183,13 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Construction", description = "The plank flying into place, dust and sparks", position = 15)
 	String constructionSection = "construction";
 
-	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 16)
+	@ConfigSection(name = "Sailing", description = "Salvage hauled onto your deck, sorted finds and cargo deliveries", position = 16)
+	String sailingSection = "sailing";
+
+	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 17)
 	String rareSection = "rare";
 
-	@ConfigSection(name = "General", description = "Shared options", position = 17)
+	@ConfigSection(name = "General", description = "Shared options", position = 18)
 	String generalSection = "general";
 
 	@ConfigItem(keyName = "enabled", name = "Effects on", description = "Turn every effect on or off at once", position = 0)
@@ -423,13 +426,31 @@ public interface ImmersiveSkillingConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 38)
+	@ConfigItem(keyName = "salvageHaul", name = "Salvage haul", description = "Salvage swings up from your hook onto a pile on deck; sorted finds pop out of the salvaging station", section = sailingSection, position = 38)
+	default boolean salvageHaul()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "seaSpray", name = "Spray", description = "Water sprays up at your hook as the salvage comes up", section = sailingSection, position = 39)
+	default boolean seaSpray()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "cargoFlight", name = "Cargo delivery", description = "Courier crates swing from you onto the ledger table", section = sailingSection, position = 40)
+	default boolean cargoFlight()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 41)
 	default boolean rareMoments()
 	{
 		return true;
 	}
 
-	@ConfigItem(keyName = "rareChance", name = "How rare", description = "The chance of a rare moment for each item or action", section = rareSection, position = 39)
+	@ConfigItem(keyName = "rareChance", name = "How rare", description = "The chance of a rare moment for each item or action", section = rareSection, position = 42)
 	default RareChance rareChance()
 	{
 		return RareChance.ONE_IN_512;

@@ -97,7 +97,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.3.1";
+	static final String VERSION = "1.4.0";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -469,7 +469,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 			checkedXp.put(skill, xp);
 			Integer itemId = lastItem.get(skill);
-			if (xp.equals(matchedXp.get(skill)) || player.getAnimation() == -1)
+			// A trawling net catches on its own, so on a boat you needn't be animating.
+			boolean trawling = skill == Skill.FISHING && onBoat() && findObjectWithin(8, "trawling net") != null;
+			if (xp.equals(matchedXp.get(skill)) || (player.getAnimation() == -1 && !trawling))
 			{
 				continue;
 			}
@@ -592,7 +594,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 				furnace = findObject("furnace");
 				anvil = findObject("anvil");
 			}
-			Activity activity = gain.used ? Activity.classifyUsed(skill, name)
+			Activity activity = skill == Skill.SAILING
+				? (Activity.sailing(name, names(gain.lost), gain.used) != null ? Activity.SAILING : null)
+				: gain.used ? Activity.classifyUsed(skill, name)
 				: Activity.classify(skill, name, furnace != null, anvil != null);
 			if (activity == null)
 			{
@@ -704,13 +708,13 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 * WHY: These can't tell a product from a swapped item by name, so they wait for the tick to end.
 	 * PRE: None.
 	 * POST: Nothing changes.
-	 * RETURN: true for Fletching, Thieving, Herblore, Crafting, Farming and Hunter
+	 * RETURN: true for Fletching, Thieving, Herblore, Crafting, Farming, Hunter and Sailing (sorting)
 	 * THROWS: Nothing.
 	 */
 	static boolean takesAnyItem(Skill skill)
 	{
 		return skill == Skill.FLETCHING || skill == Skill.THIEVING || skill == Skill.HERBLORE || skill == Skill.CRAFTING
-			|| skill == Skill.FARMING || skill == Skill.HUNTER;
+			|| skill == Skill.FARMING || skill == Skill.HUNTER || skill == Skill.SAILING;
 	}
 
 	/**
@@ -754,7 +758,26 @@ public class ImmersiveSkillingPlugin extends Plugin
 		return skill == Skill.WOODCUTTING || skill == Skill.FISHING || skill == Skill.MINING || skill == Skill.SMITHING
 			|| skill == Skill.FLETCHING || skill == Skill.FIREMAKING || skill == Skill.RUNECRAFT || skill == Skill.THIEVING
 			|| skill == Skill.HERBLORE || skill == Skill.CRAFTING || skill == Skill.PRAYER || skill == Skill.MAGIC
-			|| skill == Skill.FARMING || skill == Skill.HUNTER || skill == Skill.AGILITY || skill == Skill.CONSTRUCTION;
+			|| skill == Skill.FARMING || skill == Skill.HUNTER || skill == Skill.AGILITY || skill == Skill.CONSTRUCTION
+			|| skill == Skill.SAILING;
+	}
+
+	/**
+	 * WHAT: The names of the given items.
+	 * WHY: Sailing is told apart by what left the inventory with an item.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: the names, in the same order
+	 * THROWS: Nothing.
+	 */
+	private List<String> names(List<Integer> ids)
+	{
+		List<String> out = new ArrayList<>();
+		for (int id : ids)
+		{
+			out.add(client.getItemDefinition(id).getName());
+		}
+		return out;
 	}
 
 	private static Map<Integer, Integer> counts(ItemContainer container)
@@ -784,6 +807,19 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 */
 	private LocalPoint findObject(String... words)
 	{
+		return findObjectWithin(3, words);
+	}
+
+	/**
+	 * WHAT: Like findObject, but within the given number of tiles.
+	 * WHY: Your salvaging hook or trawling net can be at the far end of a long boat.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: its location, or null if there isn't one in reach
+	 * THROWS: Nothing.
+	 */
+	private LocalPoint findObjectWithin(int reach, String... words)
+	{
 		Player player = client.getLocalPlayer();
 		if (player == null || player.getLocalLocation() == null)
 		{
@@ -797,9 +833,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 		int py = player.getLocalLocation().getSceneY();
 		LocalPoint best = null;
 		int bestDist = Integer.MAX_VALUE;
-		for (int x = px - 3; x <= px + 3; x++)
+		for (int x = px - reach; x <= px + reach; x++)
 		{
-			for (int y = py - 3; y <= py + 3; y++)
+			for (int y = py - reach; y <= py + reach; y++)
 			{
 				if (x < 0 || y < 0 || x >= tiles[plane].length || y >= tiles[plane][x].length || tiles[plane][x][y] == null)
 				{
@@ -1007,6 +1043,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 				break;
 			case CONSTRUCTION:
 				build(itemId, at, tx, ty, plane, now, amount);
+				break;
+			case SAILING:
+				sail(itemId, itemName, lost, at, fx, fy, plane, now, amount);
 				break;
 			default:
 				fletch(itemId, at, fx, fy, plane,
@@ -1280,7 +1319,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 					LocalPoint s = spot.getLocalLocation();
 					return new double[]{s.getX(), s.getY(), s.getX(), s.getY(), 1};
 				}
-				return new double[]{tx, ty, tx, ty, 0};
+				// Trawling from a boat: the catch comes up out of your net.
+				LocalPoint net = onBoat() ? findObjectWithin(8, "trawling net") : null;
+				return net != null ? new double[]{net.getX(), net.getY(), net.getX(), net.getY(), 1} : new double[]{tx, ty, tx, ty, 0};
 			}
 			default:
 				return new double[]{tx, ty, tx, ty, 0};
@@ -1622,7 +1663,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 */
 	static String popText(Activity activity, int quantity, String itemName)
 	{
-		boolean usedUp = activity == Activity.FIREMAKING || activity == Activity.PRAYER || activity == Activity.CONSTRUCTION;
+		boolean usedUp = activity == Activity.FIREMAKING || activity == Activity.PRAYER || activity == Activity.CONSTRUCTION
+			|| (activity == Activity.SAILING && itemName != null && itemName.startsWith("Crate of "));
 		return (usedUp ? "-" : "+") + Math.max(1, quantity) + " " + itemName;
 	}
 
@@ -1737,6 +1779,82 @@ public class ImmersiveSkillingPlugin extends Plugin
 		}
 		targetX = sx;
 		targetY = sy;
+	}
+
+	/**
+	 * WHAT: Sailing: salvage swings up out of the sea from your salvaging hook onto a pile on deck;
+	 * sorted finds burst out of the salvaging station; courier crates swing from you onto the
+	 * ledger table.
+	 * WHY: Sailing was the one big skill with nothing to see. Everything stays on your own boat or
+	 * the pier, since wrecks and shoals are out in the main world while you stand on the boat.
+	 * PRE: Client thread.
+	 * POST: Props and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void sail(int itemId, String itemName, List<Integer> lost, LocalPoint at, double fx, double fy, int plane, double now,
+		double amount)
+	{
+		String kind = Activity.sailing(itemName, names(lost), itemName != null && itemName.startsWith("Crate of "));
+		Particles particles = overlay.getParticles();
+		if ("deliver".equals(kind))
+		{
+			LocalPoint table = findObjectWithin(4, "ledger table");
+			double x = table != null ? table.getX() : at.getX() + fx * TILE;
+			double y = table != null ? table.getY() : at.getY() + fy * TILE;
+			if (config.cargoFlight())
+			{
+				Props.Prop crate = props.launch(props.itemModel(itemId, 128, 0), Props.Group.FLOATING, plane, at.getX(), at.getY(), 80,
+					x, y, 60, 60, 0.5, false, 0, now);
+				if (crate != null)
+				{
+					crate.expires = now + 0.9;
+					Props.resize(crate, itemId, 128, 0.1, 0.3);
+				}
+				particles.burst(Particles.Kind.DUST, x, y, 60, 6, amount);
+			}
+			targetX = x;
+			targetY = y;
+			return;
+		}
+		if ("sort".equals(kind))
+		{
+			LocalPoint station = findObjectWithin(6, "salvaging station");
+			double x = station != null ? station.getX() : at.getX() + fx * TILE;
+			double y = station != null ? station.getY() : at.getY() + fy * TILE;
+			if (config.salvageHaul())
+			{
+				// The salvage breaks open: splinters and dust, and the find pops out to you.
+				particles.burst(Particles.Kind.CHIP, x, y, 50, 6, amount);
+				particles.burst(Particles.Kind.DUST, x, y, 45, 5, amount);
+				Props.Prop find = props.launch(props.itemModel(itemId, 120, 0), Props.Group.FLOATING, plane, x, y, 55, at.getX(),
+					at.getY(), 80, 70, 0.55, false, 0, now);
+				if (find != null)
+				{
+					find.spinPerSecond = 500;
+					find.expires = now + 0.55;
+					Props.resize(find, itemId, 120, 0.12, 0.12);
+				}
+			}
+			targetX = x;
+			targetY = y;
+			return;
+		}
+		// Salvage: up from the hook, dripping, and onto the pile on deck.
+		LocalPoint hook = findObjectWithin(8, "salvaging hook");
+		double x = hook != null ? hook.getX() : at.getX() + fx * TILE;
+		double y = hook != null ? hook.getY() : at.getY() + fy * TILE;
+		if (config.seaSpray())
+		{
+			particles.burst(Particles.Kind.DROPLET, x, y, 20, 12, amount);
+			particles.single(Particles.Kind.RIPPLE, x, y, 0, 0xDCF0FF, 90, 1.2);
+		}
+		if (config.salvageHaul())
+		{
+			addToPile(Activity.SAILING, itemId, at, fx, fy, plane, x, y, x, y, hook != null ? 1 : 0, 20, 140, now);
+		}
+		targetX = x;
+		targetY = y;
 	}
 
 	/**
@@ -2430,6 +2548,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 					break;
 				case AGILITY:
 					agility(46);
+					break;
+				case SAILING:
+					play(activity, ItemID.SAILING_SMALL_SHIPWRECK_SALVAGE, "Small salvage", Collections.emptyList(), null, 1);
 					break;
 				default:
 					play(activity, ItemID.UNSTRUNG_YEW_LONGBOW, "Yew longbow (u)", Collections.emptyList(), null, 1);
