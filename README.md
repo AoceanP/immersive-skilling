@@ -44,6 +44,7 @@ Each account keeps a **rare moments log** in the sidebar: your total, how many s
 - **A pile for every resource:** each tree, rock, fishing spot and patch gets its own pile on a free tile right beside it, on the side nearest you. Move between trees and each keeps its own stack (up to four piles at once; a fifth shrinks the oldest away). If the resource can't be found, the pile goes on a free tile beside and behind you, turned to match you.
 - **Never in the way:** never in a wall, a tree or the water. On a boat it sits on your own tile, packed a little closer, so it stays on the deck of any boat, rafts included.
 - **Alive:** everything on the pile hops when a new item lands. A full pile still takes your items: they land on top and sink in.
+- **Piles for made items (off by default):** turn it on and fletched, crafted, Herblore, smithed and smelted items land on a pile instead of flying into your pack. Smithed items pile up beside the anvil, bars beside the furnace, and the rest beside you.
 - **Clears gently:** walk away or bank and the pile shrinks away item by item.
 
 Effects still play with a log basket, fish barrel or bag open: the plugin replays the last item that skill gave you. They also work on a Sailing boat, where props sit on the deck and sail with you. Motherlode pay-dirt, amethyst, Camdozaal shards, infernal eels, minnows and aerial fishing catches are all recognised.

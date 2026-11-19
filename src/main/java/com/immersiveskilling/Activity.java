@@ -108,7 +108,8 @@ enum Activity
 		switch (skill)
 		{
 			case WOODCUTTING:
-				return name.endsWith("logs") || name.equals("logs") || name.contains("log") ? WOODCUTTING : null;
+				// Gauntlet trees give bark and Wintertodt gives roots, not logs.
+				return name.contains("log") || name.endsWith(" bark") || name.endsWith(" root") ? WOODCUTTING : null;
 			case FISHING:
 				return name.startsWith("raw ") || name.contains("fish") || name.contains("leaping") || OTHER_CATCHES.contains(name)
 					? FISHING : null;

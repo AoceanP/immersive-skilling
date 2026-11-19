@@ -417,6 +417,58 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void potionSipsArentHerblore()
+	{
+		assertTrue(ImmersiveSkillingPlugin.isSip("Prayer potion(3)", java.util.Arrays.asList("Prayer potion(4)")));
+		assertTrue("The last dose leaves a vial", ImmersiveSkillingPlugin.isSip("Vial", java.util.Arrays.asList("Super restore(1)")));
+		assertFalse("Making a potion from an unfinished one is Herblore",
+			ImmersiveSkillingPlugin.isSip("Prayer potion(3)", java.util.Arrays.asList("Ranarr potion (unf)", "Snape grass")));
+		assertFalse(ImmersiveSkillingPlugin.isSip("Yew longbow (u)", java.util.Arrays.asList("Yew logs")));
+		assertFalse(ImmersiveSkillingPlugin.isSip(null, null));
+	}
+
+	@Test
+	public void skillsThatTakeAnyItemWaitForTheTick()
+	{
+		assertTrue(ImmersiveSkillingPlugin.takesAnyItem(Skill.HERBLORE) && ImmersiveSkillingPlugin.takesAnyItem(Skill.FLETCHING));
+		assertFalse("Logs are only logs", ImmersiveSkillingPlugin.takesAnyItem(Skill.WOODCUTTING));
+		assertTrue(ImmersiveSkillingPlugin.WORN_TICKS >= 1);
+	}
+
+	@Test
+	public void popsThatArriveTogetherStack()
+	{
+		java.util.List<EffectsOverlay.Pop> pops = new java.util.ArrayList<>();
+		for (int i = 0; i < 3; i++)
+		{
+			EffectsOverlay.Pop p = new EffectsOverlay.Pop(1, "+1 Item", 0, 0, 0, 10.0 + i * 0.05);
+			p.lane = EffectsOverlay.freeLane(pops, p.start);
+			pops.add(p);
+		}
+		assertEquals(0, pops.get(0).lane);
+		assertEquals(1, pops.get(1).lane);
+		assertEquals(2, pops.get(2).lane);
+		assertEquals("A pop a second later goes back to the usual row", 0, EffectsOverlay.freeLane(pops, 11.5));
+	}
+
+	@Test
+	public void gauntletBarkAndRootsAreWoodcutting()
+	{
+		assertEquals(Activity.WOODCUTTING, Activity.classify(Skill.WOODCUTTING, "Phren bark", false, false));
+		assertEquals(Activity.WOODCUTTING, Activity.classify(Skill.WOODCUTTING, "Bruma root", false, false));
+		assertEquals("Goal reached: Lucky five", ImmersiveSkillingPlugin.goalText("Lucky five"));
+	}
+
+	@Test
+	public void pilesForMadeItemsAreOffByDefault()
+	{
+		ImmersiveSkillingConfig c = new ImmersiveSkillingConfig()
+		{
+		};
+		assertFalse("Made items still fly into your pack unless you turn this on", c.productionPiles());
+	}
+
+	@Test
 	public void workObjectsAreFoundByTheirActions()
 	{
 		assertTrue(ImmersiveSkillingPlugin.hasAction(new String[]{null, "Chop down", "Examine"}, "chop", "cut"));

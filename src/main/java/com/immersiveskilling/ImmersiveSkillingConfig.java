@@ -279,6 +279,12 @@ public interface ImmersiveSkillingConfig extends Config
 		return ClearWhen.WALK_AWAY;
 	}
 
+	@ConfigItem(keyName = "productionPiles", name = "Piles for made items", description = "Fletched, crafted, Herblore, smithed and smelted items land on a pile beside you (or the anvil or furnace) instead of flying into your pack", section = generalSection, position = 16)
+	default boolean productionPiles()
+	{
+		return false;
+	}
+
 	@ConfigItem(keyName = "showPanel", name = "Sidebar panel", description = "Show the Immersive Skilling panel in the sidebar", section = generalSection, position = 15)
 	default boolean showPanel()
 	{

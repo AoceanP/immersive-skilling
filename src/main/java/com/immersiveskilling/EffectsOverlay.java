@@ -75,6 +75,8 @@ class EffectsOverlay extends Overlay
 		final double y;
 		final int plane;
 		final double start;
+		// Its row when several arrive together: 0 is the lowest.
+		int lane;
 
 		Pop(int itemId, String text, double x, double y, int plane, double start)
 		{
@@ -124,14 +126,48 @@ class EffectsOverlay extends Overlay
 		this.plane = plane;
 	}
 
+	/** At most this many pops at once, so a fast activity doesn't stack a tower of them. */
+	static final int MAX_POPS = 6;
+	/** Pops starting this close together (seconds) share the screen, so they take separate rows. */
+	static final double TOGETHER_SECONDS = 0.5;
+	/** How far apart the rows are, in pixels. */
+	static final int LANE_PIXELS = 18;
+
 	void addPop(Pop pop)
 	{
-		// A few at once at most, so a fast activity doesn't stack a tower of pops.
-		if (pops.size() >= 4)
+		if (pops.size() >= MAX_POPS)
 		{
 			pops.remove(0);
 		}
+		pop.lane = freeLane(pops, pop.start);
 		pops.add(pop);
+	}
+
+	/**
+	 * WHAT: The lowest row not taken by a pop that started at about the same time.
+	 * WHY: A money pouch or a birdhouse gives several items at once; their pops drew on top of each
+	 * other (issues #3 and #4). Each now gets its own row.
+	 * PRE: pops are the ones showing; start is the new pop's start, in seconds.
+	 * POST: Nothing changes.
+	 * RETURN: the row, 0 for the usual place
+	 * THROWS: Nothing.
+	 */
+	static int freeLane(java.util.List<Pop> pops, double start)
+	{
+		java.util.Set<Integer> taken = new java.util.HashSet<>();
+		for (Pop other : pops)
+		{
+			if (Math.abs(other.start - start) < TOGETHER_SECONDS)
+			{
+				taken.add(other.lane);
+			}
+		}
+		int lane = 0;
+		while (taken.contains(lane))
+		{
+			lane++;
+		}
+		return lane;
 	}
 
 	void clear()
@@ -359,7 +395,7 @@ class EffectsOverlay extends Overlay
 		Composite old = g.getComposite();
 		AffineTransform t = g.getTransform();
 		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, alpha))));
-		g.translate(at.getX(), at.getY());
+		g.translate(at.getX(), at.getY() - pop.lane * LANE_PIXELS);
 		g.scale(scale, scale);
 		BufferedImage icon = pop.itemId > 0 ? itemManager.getImage(pop.itemId) : null;
 		int textX = 4;

@@ -31,9 +31,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Random;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -95,7 +97,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.3.0";
+	static final String VERSION = "1.3.1";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -140,6 +142,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private final Map<Skill, Integer> lastXp = new EnumMap<>(Skill.class);
 	private final Map<Skill, Integer> xpTick = new EnumMap<>(Skill.class);
 	private final List<Gain> pending = new ArrayList<>();
+	// What you're wearing, and the tick each item last went on or came off, so a gear swap
+	// is never taken for something you made (issue #6).
+	private Set<Integer> lastWorn = new HashSet<>();
+	private final Map<Integer, Integer> wornChanged = new HashMap<>();
 	// The XP drop each skill's last item was matched to, and the last one checked for a bag.
 	private final Map<Skill, Integer> matchedXp = new EnumMap<>(Skill.class);
 	private final Map<Skill, Integer> checkedXp = new EnumMap<>(Skill.class);
@@ -335,6 +341,22 @@ public class ImmersiveSkillingPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
+		if (event.getContainerId() == InventoryID.WORN)
+		{
+			// Everything that was or is worn now was just swapped, so it's not a product.
+			int tick = client.getTickCount();
+			Set<Integer> worn = counts(event.getItemContainer()).keySet();
+			for (int id : lastWorn)
+			{
+				wornChanged.put(id, tick);
+			}
+			for (int id : worn)
+			{
+				wornChanged.put(id, tick);
+			}
+			lastWorn = new HashSet<>(worn);
+			return;
+		}
 		if (event.getContainerId() != InventoryID.INV)
 		{
 			return;
@@ -355,10 +377,21 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 		}
 		int tick = client.getTickCount();
+		List<String> lostNames = new ArrayList<>();
+		for (int id : lost)
+		{
+			lostNames.add(client.getItemDefinition(id).getName());
+		}
 		boolean anyGained = false;
 		for (Map.Entry<Integer, Integer> e : now.entrySet())
 		{
 			int gained = e.getValue() - before.getOrDefault(e.getKey(), 0);
+			if (gained > 0 && isSip(client.getItemDefinition(e.getKey()).getName(), lostNames))
+			{
+				// Drinking a dose isn't making a potion (issue #6).
+				anyGained = true;
+				continue;
+			}
 			if (gained > 0)
 			{
 				pending.add(new Gain(e.getKey(), gained, tick, lost, false));
@@ -381,6 +414,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 	{
 		int tick = client.getTickCount();
 		pending.removeIf(g -> tick - g.tick > PENDING_TICKS);
+		wornChanged.values().removeIf(t -> tick - t > WORN_TICKS);
+		// Items for skills that take any item wait for the end of the tick, when a gear swap is known.
+		match(true);
 		Player player = client.getLocalPlayer();
 		if (player == null || player.getLocalLocation() == null)
 		{
@@ -514,6 +550,20 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 */
 	private void match()
 	{
+		match(false);
+	}
+
+	/**
+	 * WHAT: Matches waiting items to XP; with endOfTick false, skills that take any item wait.
+	 * WHY: Fletching, Herblore, Crafting, Thieving, Farming and Hunter can't tell a product from an
+	 * item you just took off, so they're matched once the tick's equipment change is in (issue #6).
+	 * PRE: Client thread.
+	 * POST: Matched items are played and removed from the pending list.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void match(boolean endOfTick)
+	{
 		if (pending.isEmpty() || xpTick.isEmpty())
 		{
 			return;
@@ -523,8 +573,15 @@ public class ImmersiveSkillingPlugin extends Plugin
 		{
 			Gain gain = it.next();
 			Skill skill = skillNear(gain.tick);
-			if (skill == null)
+			if (skill == null || (!endOfTick && takesAnyItem(skill)))
 			{
+				continue;
+			}
+			Integer swapped = wornChanged.get(gain.itemId);
+			if (swapped != null && Math.abs(swapped - gain.tick) <= WORN_TICKS)
+			{
+				// You took it off or put it on; you didn't make it.
+				it.remove();
 				continue;
 			}
 			String name = client.getItemDefinition(gain.itemId).getName();
@@ -638,6 +695,59 @@ public class ImmersiveSkillingPlugin extends Plugin
 		}
 		return best;
 	}
+
+	/** An item that went on or came off within this many ticks of arriving is a gear swap. */
+	static final int WORN_TICKS = 2;
+
+	/**
+	 * WHAT: Whether a skill counts any item that arrives as its product.
+	 * WHY: These can't tell a product from a swapped item by name, so they wait for the tick to end.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: true for Fletching, Thieving, Herblore, Crafting, Farming and Hunter
+	 * THROWS: Nothing.
+	 */
+	static boolean takesAnyItem(Skill skill)
+	{
+		return skill == Skill.FLETCHING || skill == Skill.THIEVING || skill == Skill.HERBLORE || skill == Skill.CRAFTING
+			|| skill == Skill.FARMING || skill == Skill.HUNTER;
+	}
+
+	/**
+	 * WHAT: Whether an item that arrived is just a potion with one dose fewer, or the empty vial.
+	 * WHY: Drinking a Prayer potion(4) leaves a Prayer potion(3); that isn't Herblore (issue #6).
+	 * PRE: lost holds the names of what left the inventory in the same change; either may hold nulls.
+	 * POST: Nothing changes.
+	 * RETURN: true for a sip
+	 * THROWS: Nothing.
+	 */
+	static boolean isSip(String gained, List<String> lost)
+	{
+		if (gained == null || lost == null)
+		{
+			return false;
+		}
+		java.util.regex.Matcher g = DOSE.matcher(gained);
+		for (String name : lost)
+		{
+			java.util.regex.Matcher l = name == null ? null : DOSE.matcher(name);
+			if (l == null || !l.matches())
+			{
+				continue;
+			}
+			if (g.matches() && g.group(1).equals(l.group(1)) && Integer.parseInt(g.group(2)) < Integer.parseInt(l.group(2)))
+			{
+				return true;
+			}
+			if (gained.equals("Vial") && l.group(2).equals("1"))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static final java.util.regex.Pattern DOSE = java.util.regex.Pattern.compile("(.+)\\((\\d)\\)");
 
 	static boolean isShown(Skill skill)
 	{
@@ -1064,6 +1174,21 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 * RETURN: {x, y} in local units, or null if no tile beside it is free
 	 * THROWS: Nothing.
 	 */
+	/**
+	 * WHAT: The way you're facing, as a unit vector in local units.
+	 * WHY: Smithing and smelting piles need it, and those effects aren't given it.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: {x, y}
+	 * THROWS: Nothing.
+	 */
+	private double[] facing()
+	{
+		Player player = client.getLocalPlayer();
+		double angle = player == null ? 0 : player.getCurrentOrientation() * Math.PI * 2 / 2048;
+		return new double[]{-Math.sin(angle), -Math.cos(angle)};
+	}
+
 	private double[] besideResource(LocalPoint at, double midX, double midY, int size)
 	{
 		WorldView wv = viewOf(client.getLocalPlayer());
@@ -1391,6 +1516,14 @@ public class ImmersiveSkillingPlugin extends Plugin
 			overlay.getParticles().burst(Particles.Kind.EMBER, fx, fy, 70, 8, amount);
 			overlay.getParticles().single(Particles.Kind.GLOW, fx, fy, 60, 0xFF8C28, 90, 0.7);
 		}
+		if (config.productionPiles())
+		{
+			// Issue #8: the bar lands on a pile beside the furnace instead of going into your pack.
+			double[] face = facing();
+			addToPile(Activity.SMELTING, barId, at, face[0], face[1], plane, fx, fy,
+				furnace != null ? furnace.getX() : 0, furnace != null ? furnace.getY() : 0, furnace != null ? 2 : 0, 40, 40, now);
+			return;
+		}
 		if (!config.hotMetal())
 		{
 			return;
@@ -1422,6 +1555,14 @@ public class ImmersiveSkillingPlugin extends Plugin
 			// The flash of the hammer striking hot metal.
 			overlay.getParticles().single(Particles.Kind.GLOW, ax, ay, top + 10, 0xFFD27A, 60, 0.3);
 		}
+		if (config.productionPiles())
+		{
+			// Issue #8: the finished item lands on a pile beside the anvil.
+			LocalPoint me = client.getLocalPlayer().getLocalLocation();
+			double[] face = facing();
+			addToPile(Activity.SMITHING, itemId, me, face[0], face[1], plane, ax, ay, ax, ay, anvil != null ? 1 : 0, top, 40, now);
+			return;
+		}
 		if (!config.hotMetal())
 		{
 			return;
@@ -1448,6 +1589,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 		if (config.shavings())
 		{
 			overlay.getParticles().burst(Particles.Kind.SHAVING, x, y, 70, 8, amount);
+		}
+		if (config.productionPiles())
+		{
+			addToPile(Activity.FLETCHING, itemId, at, fx, fy, plane, x, y, 0, 0, 0, 60, 50, now);
+			return;
 		}
 		if (!config.fletchedItem())
 		{
@@ -1616,6 +1762,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 				overlay.getParticles().single(Particles.Kind.GLOW, x, y, 75, 0x8CF0A0, 50, 0.6);
 			}
 		}
+		if (config.productionPiles())
+		{
+			addToPile(Activity.HERBLORE, itemId, at, fx, fy, plane, x, y, 0, 0, 0, 55, 50, now);
+			return;
+		}
 		if (config.herbItem())
 		{
 			Props.Prop item = props.launch(props.itemModel(itemId, 128, 0), Props.Group.FLOATING, plane, x, y, 55, x, y, 85, 0, 0.6,
@@ -1656,6 +1807,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 			{
 				overlay.getParticles().single(Particles.Kind.GLOW, x, y, 80, 0xB4C8FF, 45, 0.6);
 			}
+		}
+		if (config.productionPiles())
+		{
+			addToPile(Activity.CRAFTING, itemId, at, fx, fy, plane, x, y, 0, 0, 0, 55, 50, now);
+			return;
 		}
 		if (config.craftedItem())
 		{
@@ -2029,10 +2185,23 @@ public class ImmersiveSkillingPlugin extends Plugin
 		for (int i = 0; i < unlocked.size(); i++)
 		{
 			// After the "Rare moment!" pop has risen out of the way.
-			overlay.addPop(new EffectsOverlay.Pop(-1, "Achievement: " + unlocked.get(i).getTitle(), at.getX(), at.getY(), plane,
+			overlay.addPop(new EffectsOverlay.Pop(-1, goalText(unlocked.get(i).getTitle()), at.getX(), at.getY(), plane,
 				now + 1.0 + i * 1.2));
 		}
 		refreshPanel();
+	}
+
+	/**
+	 * WHAT: The pop for a newly reached rare moments goal: "Goal reached: Lucky five".
+	 * WHY: "Achievement: Lucky five" read like a bug report (issue #7).
+	 * PRE: title is the goal's name.
+	 * POST: Nothing changes.
+	 * RETURN: the text
+	 * THROWS: Nothing.
+	 */
+	static String goalText(String title)
+	{
+		return "Goal reached: " + title;
 	}
 
 	/** The account setting the rare moments log is saved under. */
