@@ -796,4 +796,35 @@ public class ImmersiveSkillingTest
 		assertEquals("Blast Furnace bars count as smelting once the dispenser is the furnace", Activity.SMELTING,
 			Activity.classify(Skill.SMITHING, "Steel bar", true, false));
 	}
+
+	@Test
+	public void levelUpsAddToTheClassicFireworksAndAreOffByDefault()
+	{
+		ImmersiveSkillingConfig config = new ImmersiveSkillingConfig() { };
+		assertFalse("Level-up moments only add to the game's fireworks, and only when asked", config.levelUpMoments());
+		assertEquals("Woodcutting level 70", ImmersiveSkillingPlugin.levelUpText(Skill.WOODCUTTING, 70));
+	}
+
+	@Test
+	public void pilesKeepTheirOldBehaviourUnlessAsked()
+	{
+		ImmersiveSkillingConfig config = new ImmersiveSkillingConfig() { };
+		assertEquals(ImmersiveSkillingConfig.PileFade.NEVER, config.pileFade());
+		assertEquals(0, ImmersiveSkillingConfig.PileFade.NEVER.getMinutes());
+		assertEquals(5, ImmersiveSkillingConfig.PileFade.FIVE.getMinutes());
+		assertEquals("23 Yew logs", ImmersiveSkillingPlugin.pileText(23, "Yew logs"));
+		assertEquals("4 here", ImmersiveSkillingPlugin.pileText(4, ""));
+	}
+
+	@Test
+	public void gauntletResourcesAreFoundByTheirActions()
+	{
+		assertTrue("Phren roots are cut", ImmersiveSkillingPlugin.hasAction(new String[]{"Cut", null, "Examine"},
+			ImmersiveSkillingPlugin.actionsFor(Activity.WOODCUTTING)));
+		assertTrue("Deposits are mined", ImmersiveSkillingPlugin.hasAction(new String[]{"Mine"},
+			ImmersiveSkillingPlugin.actionsFor(Activity.MINING)));
+		assertNull("Fishing spots are found another way", ImmersiveSkillingPlugin.actionsFor(Activity.FISHING));
+		assertEquals("Phren bark", Activity.WOODCUTTING, Activity.classify(Skill.WOODCUTTING, "Phren bark", false, false));
+		assertEquals(Activity.MINING, Activity.classify(Skill.MINING, "Corrupted ore", false, false));
+	}
 }

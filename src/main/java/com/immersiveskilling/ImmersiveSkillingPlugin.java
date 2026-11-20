@@ -97,13 +97,15 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.4.1";
+	static final String VERSION = "1.4.2";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
 	/** Piles clear when you're this far away (in tiles) and "Walk away" is chosen. Far enough to move
 	 * between the trees or rocks of one spot without losing their piles. */
 	static final int WALK_AWAY_TILES = 8;
+	/** How many ticks a resource you were working on is remembered after it runs out. */
+	private static final int SOURCE_TICKS = 6;
 	/** At most this many piles at once; a new one past it shrinks the oldest away. */
 	static final int MAX_PILES = 4;
 	/** Piles always clear when you're this far away (in tiles). */
@@ -140,6 +142,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	// Inventory and XP last seen, to spot what was gained this tick.
 	private Map<Integer, Integer> lastInventory;
 	private final Map<Skill, Integer> lastXp = new EnumMap<>(Skill.class);
+	private final Map<Skill, Integer> lastLevel = new EnumMap<>(Skill.class);
 	private final Map<Skill, Integer> xpTick = new EnumMap<>(Skill.class);
 	private final List<Gain> pending = new ArrayList<>();
 	// What you're wearing, and the tick each item last went on or came off, so a gear swap
@@ -167,6 +170,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private int depositTick = -100;
 	private int tossTick = -1;
 	private int tossCount;
+	// The resource you were last working on, for when it runs out on the tick your item arrives.
+	private Activity sourceActivity;
+	private double[] sourceSeen;
+	private LocalPoint sourceStand;
+	private int sourceTick;
 
 	private volatile boolean paused;
 	// Rare moments: the dice, the next preview forced rare, and how many you've seen this session.
@@ -198,6 +206,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 		final double spread;
 		int count;
 		double lastUsed;
+		// The last item that landed on it, for the hover label.
+		String name = "";
 
 		Pile(int id, Activity activity, String key, double x, double y, int plane, int view, int yaw, double spread)
 		{
@@ -290,6 +300,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	{
 		lastInventory = null;
 		lastXp.clear();
+		lastLevel.clear();
+		sourceSeen = null;
 		xpTick.clear();
 		matchedXp.clear();
 		checkedXp.clear();
@@ -330,6 +342,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 		Skill skill = event.getSkill();
 		int xp = event.getXp();
 		Integer before = lastXp.put(skill, xp);
+		Integer levelBefore = lastLevel.put(skill, event.getLevel());
+		if (levelBefore != null && event.getLevel() > levelBefore && config.levelUpMoments())
+		{
+			levelUp(skill, event.getLevel());
+		}
 		if (before != null && xp > before)
 		{
 			xpTick.put(skill, client.getTickCount());
@@ -435,13 +452,17 @@ public class ImmersiveSkillingPlugin extends Plugin
 		overlay.setView(wv.getId(), wv.getPlane());
 		LocalPoint at = player.getLocalLocation();
 		boolean walkAway = config.clearWhen() == ImmersiveSkillingConfig.ClearWhen.WALK_AWAY;
+		double fadeAfter = config.pileFade().getMinutes() * 60.0;
+		double clock = seconds();
 		Iterator<Pile> each = piles.iterator();
 		while (each.hasNext())
 		{
 			Pile pile = each.next();
 			double dist = Math.hypot(at.getX() - pile.x, at.getY() - pile.y) / TILE;
 			// Boarding or leaving a boat moves you to another worldview, so the pile can't follow.
-			if ((walkAway && dist > WALK_AWAY_TILES) || dist > FAR_TILES || wv.getPlane() != pile.plane || wv.getId() != pile.view)
+			boolean faded = fadeAfter > 0 && clock - pile.lastUsed > fadeAfter;
+			if ((walkAway && dist > WALK_AWAY_TILES) || dist > FAR_TILES || wv.getPlane() != pile.plane || wv.getId() != pile.view
+				|| faded)
 			{
 				props.dissolvePile(pile.id, seconds());
 				each.remove();
@@ -453,6 +474,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 				}
 			}
 		}
+		labelPiles(wv);
+		watchSource(player, at, tick);
 		syncRareLog();
 		bagFallback(player, tick);
 		ambient(player, tick);
@@ -1104,6 +1127,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 			pile = newPile(activity, key, at, fx, fy, plane, midX, midY, size, boat, now);
 		}
 		pile.lastUsed = now;
+		pile.name = client.getItemDefinition(itemId).getName();
 		lastPile = pile;
 		PileLayout.Shape shape = activity == Activity.FISHING ? PileLayout.Shape.BASKET
 			: activity == Activity.WOODCUTTING ? PileLayout.Shape.STACK : PileLayout.Shape.HEAP;
@@ -1313,18 +1337,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 	 */
 	private double[] source(Activity activity, LocalPoint at, double tx, double ty)
 	{
-		String[] actions;
 		switch (activity)
 		{
-			case WOODCUTTING:
-				actions = new String[]{"chop", "cut"};
-				break;
-			case MINING:
-				actions = new String[]{"mine"};
-				break;
-			case FARMING:
-				actions = new String[]{"harvest", "pick", "dig"};
-				break;
 			case FISHING:
 			{
 				Player player = client.getLocalPlayer();
@@ -1340,18 +1354,196 @@ public class ImmersiveSkillingPlugin extends Plugin
 				return net != null ? new double[]{net.getX(), net.getY(), net.getX(), net.getY(), 1} : new double[]{tx, ty, tx, ty, 0};
 			}
 			default:
-				return new double[]{tx, ty, tx, ty, 0};
+				break;
 		}
+		String[] actions = actionsFor(activity);
+		double[] found = actions == null ? null : resourceAt(at, actions);
+		if (found != null)
+		{
+			rememberSource(activity, at, found);
+			return found;
+		}
+		// Gauntlet deposits and roots, and most rocks, run out on the tick your item arrives, so
+		// the resource is gone; use the one you were just working on (or every last item from
+		// every rock landed on one shared pile).
+		boolean same = sourceSeen != null && sourceActivity == activity && at.equals(sourceStand)
+			&& client.getTickCount() - sourceTick <= SOURCE_TICKS;
+		return same ? sourceSeen : new double[]{tx, ty, tx, ty, 0};
+	}
+
+	/**
+	 * WHAT: The right-click actions of the resource an activity gathers from.
+	 * WHY: Trees say "Chop down" (Gauntlet roots "Cut"), rocks "Mine", patches "Harvest" or "Pick".
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: the lower case action starts, or null when the activity has no such resource
+	 * THROWS: Nothing.
+	 */
+	static String[] actionsFor(Activity activity)
+	{
+		switch (activity)
+		{
+			case WOODCUTTING:
+				return new String[]{"chop", "cut"};
+			case MINING:
+				return new String[]{"mine"};
+			case FARMING:
+				return new String[]{"harvest", "pick", "dig"};
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * WHAT: The resource beside you with one of the actions: the side facing you, its middle, its size.
+	 * WHY: Shared by source() and the watch kept while you work.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: {x, y, middle x, middle y, size}, or null when there isn't one
+	 * THROWS: Nothing.
+	 */
+	private double[] resourceAt(LocalPoint at, String[] actions)
+	{
 		GameObject object = workObject(at, actions);
 		if (object == null || object.getLocalLocation() == null)
 		{
-			return new double[]{tx, ty, tx, ty, 0};
+			return null;
 		}
 		double cx = object.getLocalLocation().getX();
 		double cy = object.getLocalLocation().getY();
 		int size = Math.max(1, Math.max(object.sizeX(), object.sizeY()));
 		double[] e = edge(cx, cy, size, at.getX(), at.getY());
 		return new double[]{e[0], e[1], cx, cy, size};
+	}
+
+	private void rememberSource(Activity activity, LocalPoint at, double[] found)
+	{
+		sourceActivity = activity;
+		sourceSeen = found;
+		sourceStand = at;
+		sourceTick = client.getTickCount();
+	}
+
+	/**
+	 * WHAT: While you keep chopping, mining or picking, remembers the resource you're at.
+	 * WHY: A rock that gives one ore is gone by the time that ore arrives; this saw it a tick before.
+	 * PRE: Client thread; called every tick.
+	 * POST: The remembered resource may be updated.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void watchSource(Player player, LocalPoint at, int tick)
+	{
+		String[] actions = lastActivity == null ? null : actionsFor(lastActivity);
+		if (actions == null || player.getAnimation() == -1 || tick - xpTick.getOrDefault(lastActivity == Activity.MINING
+			? Skill.MINING : lastActivity == Activity.FARMING ? Skill.FARMING : Skill.WOODCUTTING, -100) > 100)
+		{
+			return;
+		}
+		double[] found = resourceAt(at, actions);
+		if (found != null)
+		{
+			rememberSource(lastActivity, at, found);
+		}
+	}
+
+	/**
+	 * WHAT: Hands the overlay a label for each pile you can see: how many, and of what.
+	 * WHY: Hovering a pile tells you how much you've gathered there.
+	 * PRE: Client thread; called every tick.
+	 * POST: The overlay's labels are replaced.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void labelPiles(WorldView wv)
+	{
+		List<EffectsOverlay.PileLabel> labels = new ArrayList<>();
+		if (config.pileHover())
+		{
+			for (Pile pile : piles)
+			{
+				if (pile.count > 0 && pile.plane == wv.getPlane() && pile.view == wv.getId())
+				{
+					labels.add(new EffectsOverlay.PileLabel(pile.x, pile.y, pileText(pile.count, pile.name)));
+				}
+			}
+		}
+		overlay.setPileLabels(labels);
+	}
+
+	/**
+	 * WHAT: A pile's hover text: "23 Yew logs".
+	 * WHY: Kept apart so it can be tested.
+	 * PRE: name may be null or empty.
+	 * POST: Nothing changes.
+	 * RETURN: the text
+	 * THROWS: Nothing.
+	 */
+	static String pileText(int count, String name)
+	{
+		return name == null || name.isEmpty() ? count + " here" : count + " " + name;
+	}
+
+	/**
+	 * WHAT: A level-up moment: a ring of golden light and sparkles around you, and the new level
+	 * rising over you, on top of the game's own fireworks.
+	 * WHY: Levelling deserves a little more; it adds to the classic fireworks and never replaces them.
+	 * PRE: Client thread.
+	 * POST: Particles and a pop are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void levelUp(Skill skill, int level)
+	{
+		Player player = client.getLocalPlayer();
+		if (!config.enabled() || paused || props == null || player == null || player.getLocalLocation() == null)
+		{
+			return;
+		}
+		WorldView wv = viewOf(player);
+		overlay.setView(wv.getId(), wv.getPlane());
+		LocalPoint at = player.getLocalLocation();
+		double x = at.getX();
+		double y = at.getY();
+		double amount = config.amount().getScale();
+		Particles particles = overlay.getParticles();
+		particles.single(Particles.Kind.GLOW, x, y, 90, 0xFFD24A, 180, 1.4);
+		particles.burst(Particles.Kind.GLINT, x, y, 120, 16, amount);
+		particles.burst(Particles.Kind.MOTE, x, y, 20, 18, amount);
+		particles.burst(Particles.Kind.SPARK, x, y, 100, 10, amount);
+		overlay.addPop(new EffectsOverlay.Pop(-1, levelUpText(skill, level), x, y, wv.getPlane(), seconds()));
+	}
+
+	/**
+	 * WHAT: The level-up pop: "Woodcutting level 70".
+	 * WHY: Kept apart so it can be tested.
+	 * PRE: skill is not null.
+	 * POST: Nothing changes.
+	 * RETURN: the text
+	 * THROWS: Nothing.
+	 */
+	static String levelUpText(Skill skill, int level)
+	{
+		return skill.getName() + " level " + level;
+	}
+
+	/**
+	 * WHAT: Plays a level-up moment where you stand, for the panel's preview button.
+	 * WHY: It's off by default, so you can see it before turning it on.
+	 * PRE: Any thread.
+	 * POST: The moment plays on the client thread when logged in.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void previewLevelUp()
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (client.getGameState() == GameState.LOGGED_IN)
+			{
+				levelUp(Skill.WOODCUTTING, 99);
+			}
+		});
 	}
 
 	/**
@@ -2843,6 +3035,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 		piles.clear();
 		lastPile = null;
 		statusCount = 0;
+		overlay.setPileLabels(Collections.emptyList());
 		refreshPanel();
 	}
 

@@ -204,6 +204,10 @@ class ImmersiveSkillingPanel extends PluginPanel
 		general.add(row("Piles for made items", "productionPiles", config::productionPiles));
 		general.add(segmented("Effect amount", "amount", ImmersiveSkillingConfig.Amount.values(), config::amount));
 		general.add(segmented("Clear piles when", "clearWhen", ImmersiveSkillingConfig.ClearWhen.values(), config::clearWhen));
+		general.add(segmented("Piles fade after", "pileFade", ImmersiveSkillingConfig.PileFade.values(), config::pileFade));
+		general.add(row("Pile count on hover", "pileHover", config::pileHover));
+		general.add(row("Level-up moments", "levelUpMoments", config::levelUpMoments));
+		general.add(button("Preview level-up", "Plays a level-up moment where you stand", plugin::previewLevelUp));
 
 		stack.add(general);
 

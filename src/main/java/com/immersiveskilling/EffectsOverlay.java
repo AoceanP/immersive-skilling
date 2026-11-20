@@ -64,6 +64,10 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  */
 class EffectsOverlay extends Overlay
 {
+	/** How close the mouse must be to a pile, in pixels, to show its count. */
+	private static final int HOVER_PIXELS = 34;
+	private volatile List<PileLabel> pileLabels = java.util.Collections.emptyList();
+
 	/** How long an item pop lasts, in seconds. */
 	static final double POP_SECONDS = 1.3;
 
@@ -174,6 +178,67 @@ class EffectsOverlay extends Overlay
 	{
 		particles.clear();
 		pops.clear();
+		pileLabels = java.util.Collections.emptyList();
+	}
+
+	/**
+	 * WHAT: A pile's place and its hover text.
+	 * WHY: The overlay draws the text when the mouse is over the pile.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: Not applicable.
+	 * THROWS: Nothing.
+	 */
+	static final class PileLabel
+	{
+		final double x;
+		final double y;
+		final String text;
+
+		PileLabel(double x, double y, String text)
+		{
+			this.x = x;
+			this.y = y;
+			this.text = text;
+		}
+	}
+
+	void setPileLabels(List<PileLabel> labels)
+	{
+		pileLabels = labels;
+	}
+
+	/**
+	 * WHAT: Draws the count of the pile under the mouse, just above it.
+	 * WHY: Pile polish: hover a pile to see how much is on it.
+	 * PRE: Render thread (the client thread).
+	 * POST: At most one label is drawn.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void drawPileLabel(Graphics2D g)
+	{
+		Point mouse = client.getMouseCanvasPosition();
+		if (mouse == null || mouse.getX() < 0)
+		{
+			return;
+		}
+		for (PileLabel label : pileLabels)
+		{
+			Point at = project(label.x, label.y, 30);
+			if (at == null || Math.hypot(at.getX() - mouse.getX(), at.getY() - mouse.getY()) > HOVER_PIXELS)
+			{
+				continue;
+			}
+			g.setFont(FontManager.getRunescapeBoldFont());
+			int x = at.getX() - g.getFontMetrics().stringWidth(label.text) / 2;
+			int y = at.getY() - 24;
+			g.setColor(Color.BLACK);
+			g.drawString(label.text, x + 1, y + 1);
+			g.setColor(Color.YELLOW);
+			g.drawString(label.text, x, y);
+			return;
+		}
 	}
 
 	@Override
@@ -183,7 +248,8 @@ class EffectsOverlay extends Overlay
 		double dt = lastNanos == 0 ? 0 : (nanos - lastNanos) / 1e9;
 		lastNanos = nanos;
 		particles.update(dt);
-		if (particles.getLive().isEmpty() && pops.isEmpty())
+		List<PileLabel> labels = pileLabels;
+		if (particles.getLive().isEmpty() && pops.isEmpty() && labels.isEmpty())
 		{
 			return null;
 		}
@@ -204,6 +270,10 @@ class EffectsOverlay extends Overlay
 				continue;
 			}
 			drawPop(g, pop, age);
+		}
+		if (!labels.isEmpty())
+		{
+			drawPileLabel(g);
 		}
 		return null;
 	}

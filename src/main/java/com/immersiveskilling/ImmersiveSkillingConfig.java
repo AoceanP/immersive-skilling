@@ -135,6 +135,31 @@ public interface ImmersiveSkillingConfig extends Config
 		}
 	}
 
+	enum PileFade
+	{
+		NEVER("Never", 0), ONE("1 min", 1), FIVE("5 min", 5), TEN("10 min", 10);
+
+		private final String label;
+		private final int minutes;
+
+		PileFade(String label, int minutes)
+		{
+			this.label = label;
+			this.minutes = minutes;
+		}
+
+		int getMinutes()
+		{
+			return minutes;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
+	}
+
 	@ConfigSection(name = "Woodcutting", description = "Log pile and wood chips", position = 0)
 	String woodcuttingSection = "woodcutting";
 
@@ -287,6 +312,24 @@ public interface ImmersiveSkillingConfig extends Config
 
 	@ConfigItem(keyName = "productionPiles", name = "Piles for made items", description = "Fletched, crafted, Herblore, smithed and smelted items land on a pile beside you (or the anvil or furnace) instead of flying into your pack", section = generalSection, position = 16)
 	default boolean productionPiles()
+	{
+		return false;
+	}
+
+	@ConfigItem(keyName = "pileFade", name = "Piles fade after", description = "A pile you haven't added to for this long shrinks away", section = generalSection, position = 17)
+	default PileFade pileFade()
+	{
+		return PileFade.NEVER;
+	}
+
+	@ConfigItem(keyName = "pileHover", name = "Pile count on hover", description = "Hover a pile to see how many items are on it", section = generalSection, position = 18)
+	default boolean pileHover()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "levelUpMoments", name = "Level-up moments", description = "Adds golden light, sparkles and your new level on top of the game's own fireworks when you level up. Never replaces them.", section = generalSection, position = 19)
+	default boolean levelUpMoments()
 	{
 		return false;
 	}

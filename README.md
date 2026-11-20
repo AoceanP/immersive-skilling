@@ -48,6 +48,13 @@ Each account keeps a **rare moments log** in the sidebar: your total, how many s
 - **Alive:** everything on the pile hops when a new item lands. A full pile still takes your items: they land on top and sink in.
 - **Piles for made items (off by default):** turn it on and fletched, crafted, Herblore, smithed and smelted items land on a pile instead of flying into your pack. Smithed items pile up beside the anvil, bars beside the furnace, and the rest beside you.
 - **Clears gently:** walk away or bank and the pile shrinks away item by item.
+- **Fades if you like:** set piles to fade after 1, 5 or 10 minutes untouched (never, by default).
+- **Hover for the count:** hover a pile to see how many items are on it.
+- **Even when the rock runs out:** the last ore from a rock (or bark from Gauntlet roots) still lands on that rock's own pile.
+
+## Level-up moments
+
+Off by default. Turn it on and levelling up adds golden light, sparkles and your new level over you, on top of the game's own fireworks. The classic fireworks always play as normal.
 
 Effects still play with a log basket, fish barrel or bag open: the plugin replays the last item that skill gave you. They also work on a Sailing boat, where props sit on the deck and sail with you. Motherlode pay-dirt, amethyst, Camdozaal shards, infernal eels, minnows and aerial fishing catches are all recognised.
 
