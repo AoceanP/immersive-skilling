@@ -220,6 +220,53 @@ enum Activity
 	}
 
 	/**
+	 * WHAT: What an item is dropped into at a minigame: pay-dirt into the Motherlode hopper, ore
+	 * and coal onto the Blast Furnace conveyor belt, harpoonfish into a Tempoross ammunition crate.
+	 * WHY: These hand-ins give no XP (or XP with nothing arriving), so they're told apart by the
+	 * item that left and the object you stand at.
+	 * PRE: itemName may be null.
+	 * POST: Nothing changes.
+	 * RETURN: the object's name in lower case ("hopper", "conveyor belt", "ammunition crate"), or null
+	 * THROWS: Nothing.
+	 */
+	static String depositTarget(String itemName)
+	{
+		if (itemName == null)
+		{
+			return null;
+		}
+		String name = itemName.toLowerCase(Locale.ROOT);
+		if (name.equals("pay-dirt"))
+		{
+			return "hopper";
+		}
+		if (name.endsWith(" ore") || name.equals("coal"))
+		{
+			return "conveyor belt";
+		}
+		return name.equals("raw harpoonfish") || name.equals("harpoonfish") ? "ammunition crate" : null;
+	}
+
+	/**
+	 * WHAT: Whether an item comes out of the Motherlode Mine sack: cleaned ore, coal, golden
+	 * nuggets and uncut gems.
+	 * WHY: Searching the sack gives no XP, so the haul is told apart by what arrives beside it.
+	 * PRE: itemName may be null.
+	 * POST: Nothing changes.
+	 * RETURN: true for a sack find
+	 * THROWS: Nothing.
+	 */
+	static boolean fromSack(String itemName)
+	{
+		if (itemName == null)
+		{
+			return false;
+		}
+		String name = itemName.toLowerCase(Locale.ROOT);
+		return name.endsWith(" ore") || name.equals("coal") || name.equals("golden nugget") || name.startsWith("uncut ");
+	}
+
+	/**
 	 * WHAT: Whether the activity builds a pile beside you.
 	 * WHY: Only gathering piles up; the rest play and fade.
 	 * PRE: None.

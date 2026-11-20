@@ -762,4 +762,38 @@ public class ImmersiveSkillingTest
 			ImmersiveSkillingPlugin.popText(Activity.SAILING, 3, "Crate of rum (The Pandemonium)"));
 		assertEquals("+1 Small salvage", ImmersiveSkillingPlugin.popText(Activity.SAILING, 1, "Small salvage"));
 	}
+
+	@Test
+	public void minigameHandInsKnowWhereTheyGo()
+	{
+		assertEquals("hopper", Activity.depositTarget("Pay-dirt"));
+		assertEquals("conveyor belt", Activity.depositTarget("Runite ore"));
+		assertEquals("conveyor belt", Activity.depositTarget("Coal"));
+		assertEquals("ammunition crate", Activity.depositTarget("Raw harpoonfish"));
+		assertEquals("ammunition crate", Activity.depositTarget("Harpoonfish"));
+		assertNull("A dropped log isn't a hand-in", Activity.depositTarget("Yew logs"));
+		assertNull(Activity.depositTarget(null));
+	}
+
+	@Test
+	public void theSackGivesOreNuggetsAndGems()
+	{
+		assertTrue(Activity.fromSack("Mithril ore"));
+		assertTrue(Activity.fromSack("Coal"));
+		assertTrue(Activity.fromSack("Golden nugget"));
+		assertTrue(Activity.fromSack("Uncut sapphire"));
+		assertFalse("Pay-dirt goes in, it doesn't come out", Activity.fromSack("Pay-dirt"));
+		assertFalse(Activity.fromSack(null));
+	}
+
+	@Test
+	public void wintertodtIsAlreadyCovered()
+	{
+		assertEquals(Activity.WOODCUTTING, Activity.classify(Skill.WOODCUTTING, "Bruma root", false, false));
+		assertEquals(Activity.FLETCHING, Activity.classify(Skill.FLETCHING, "Bruma kindling", false, false));
+		assertEquals(Activity.FIREMAKING, Activity.classifyUsed(Skill.FIREMAKING, "Bruma root"));
+		assertEquals(Activity.FIREMAKING, Activity.classifyUsed(Skill.FIREMAKING, "Bruma kindling"));
+		assertEquals("Blast Furnace bars count as smelting once the dispenser is the furnace", Activity.SMELTING,
+			Activity.classify(Skill.SMITHING, "Steel bar", true, false));
+	}
 }

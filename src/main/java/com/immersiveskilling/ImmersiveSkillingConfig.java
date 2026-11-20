@@ -186,10 +186,13 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Sailing", description = "Salvage hauled onto your deck, sorted finds and cargo deliveries", position = 16)
 	String sailingSection = "sailing";
 
-	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 17)
+	@ConfigSection(name = "Minigames", description = "Motherlode hopper and sack, Blast Furnace belt, Tempoross crates", position = 17)
+	String minigameSection = "minigames";
+
+	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 18)
 	String rareSection = "rare";
 
-	@ConfigSection(name = "General", description = "Shared options", position = 18)
+	@ConfigSection(name = "General", description = "Shared options", position = 19)
 	String generalSection = "general";
 
 	@ConfigItem(keyName = "enabled", name = "Effects on", description = "Turn every effect on or off at once", position = 0)
@@ -444,13 +447,25 @@ public interface ImmersiveSkillingConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 41)
+	@ConfigItem(keyName = "depositFlight", name = "Hand-ins", description = "Pay-dirt drops into the hopper, ore onto the Blast Furnace belt, fish into Tempoross crates", section = minigameSection, position = 41)
+	default boolean depositFlight()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "sackHaul", name = "Sack haul", description = "Ore and nuggets fly out of the Motherlode Mine sack to you", section = minigameSection, position = 42)
+	default boolean sackHaul()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 43)
 	default boolean rareMoments()
 	{
 		return true;
 	}
 
-	@ConfigItem(keyName = "rareChance", name = "How rare", description = "The chance of a rare moment for each item or action", section = rareSection, position = 42)
+	@ConfigItem(keyName = "rareChance", name = "How rare", description = "The chance of a rare moment for each item or action", section = rareSection, position = 44)
 	default RareChance rareChance()
 	{
 		return RareChance.ONE_IN_512;

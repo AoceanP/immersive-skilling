@@ -97,7 +97,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.4.0";
+	static final String VERSION = "1.4.1";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -163,6 +163,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private double targetX;
 	private double targetY;
 	private LocalPoint lastStandPoint;
+	// Minigame hand-ins: the tick of the last one, and how many props flew this tick.
+	private int depositTick = -100;
+	private int tossTick = -1;
+	private int tossCount;
 
 	private volatile boolean paused;
 	// Rare moments: the dice, the next preview forced rare, and how many you've seen this session.
@@ -394,13 +398,18 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 			if (gained > 0)
 			{
+				sackHaul(e.getKey(), gained, tick);
 				pending.add(new Gain(e.getKey(), gained, tick, lost, false));
 				anyGained = true;
 			}
 		}
 		if (!anyGained)
 		{
-			// Nothing arrived: maybe a log went onto a fire.
+			// Nothing arrived: maybe pay-dirt went into the hopper, or a log onto a fire.
+			for (int id : lost)
+			{
+				deposit(id, before.get(id) - now.getOrDefault(id, 0), tick);
+			}
 			for (int id : lost)
 			{
 				pending.add(new Gain(id, before.get(id) - now.getOrDefault(id, 0), tick, Collections.emptyList(), true));
@@ -471,7 +480,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 			Integer itemId = lastItem.get(skill);
 			// A trawling net catches on its own, so on a boat you needn't be animating.
 			boolean trawling = skill == Skill.FISHING && onBoat() && findObjectWithin(8, "trawling net") != null;
-			if (xp.equals(matchedXp.get(skill)) || (player.getAnimation() == -1 && !trawling))
+			// Filling a Tempoross crate gives Fishing XP, but nothing was caught.
+			boolean handedIn = Math.abs(xp - depositTick) <= MATCH_TICKS;
+			if (xp.equals(matchedXp.get(skill)) || handedIn || (player.getAnimation() == -1 && !trawling))
 			{
 				continue;
 			}
@@ -592,6 +603,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 			if (skill == Skill.SMITHING && !gain.used)
 			{
 				furnace = findObject("furnace");
+				if (furnace == null)
+				{
+					// Blast Furnace bars are collected, with the XP, from the bar dispenser.
+					furnace = findObject("bar dispenser");
+				}
 				anvil = findObject("anvil");
 			}
 			Activity activity = skill == Skill.SAILING
@@ -1651,6 +1667,133 @@ public class ImmersiveSkillingPlugin extends Plugin
 			item.expires = now + 1.55;
 			Props.resize(item, itemId, 128, 0.2, 0.2);
 		}
+	}
+
+	/**
+	 * WHAT: Minigame hand-ins: pay-dirt drops into the Motherlode hopper, ore onto the Blast Furnace
+	 * conveyor belt, harpoonfish into a Tempoross ammunition crate.
+	 * WHY: Minigames were where you spend hours with nothing to see; these hand-ins give no item and
+	 * often no XP, so they're caught by what left your inventory beside the object.
+	 * PRE: Client thread. count is how many left.
+	 * POST: Props, particles and a pop may be added; depositTick is set.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void deposit(int itemId, int count, int tick)
+	{
+		String name = client.getItemDefinition(itemId).getName();
+		String target = Activity.depositTarget(name);
+		LocalPoint into = target == null ? null : findObjectWithin(2, target);
+		if (into == null)
+		{
+			return;
+		}
+		depositTick = tick;
+		if (!config.enabled() || paused || props == null || !config.depositFlight())
+		{
+			return;
+		}
+		boolean wet = target.equals("ammunition crate");
+		toss(itemId, name, count, client.getLocalPlayer().getLocalLocation().getX(),
+			client.getLocalPlayer().getLocalLocation().getY(), 80, into.getX(), into.getY(), 60, wet ? Particles.Kind.DROPLET
+				: Particles.Kind.DUST, false, tick);
+	}
+
+	/**
+	 * WHAT: The Motherlode Mine sack: cleaned ore and nuggets fly up out of it to you.
+	 * WHY: Emptying the sack is the payoff of a trip, and it gives no XP, so nothing showed.
+	 * PRE: Client thread. count is how many arrived.
+	 * POST: Props, particles and a pop may be added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void sackHaul(int itemId, int count, int tick)
+	{
+		if (!config.enabled() || paused || props == null || !config.sackHaul())
+		{
+			return;
+		}
+		Integer mined = xpTick.get(Skill.MINING);
+		String name = client.getItemDefinition(itemId).getName();
+		if ((mined != null && Math.abs(mined - tick) <= MATCH_TICKS) || !Activity.fromSack(name))
+		{
+			return;
+		}
+		LocalPoint sack = findObjectWithin(2, "sack");
+		if (sack == null)
+		{
+			return;
+		}
+		LocalPoint at = client.getLocalPlayer().getLocalLocation();
+		toss(itemId, name, count, sack.getX(), sack.getY(), 60, at.getX(), at.getY(), 80, Particles.Kind.DUST, true, tick);
+	}
+
+	/**
+	 * WHAT: Throws up to three of an item from one point to another, with a burst at the object
+	 * end and a pop.
+	 * WHY: Shared by the hand-ins and the sack, which only differ in direction.
+	 * PRE: Client thread; props exists. toYou is true when the items fly to you.
+	 * POST: Props, particles and a pop may be added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void toss(int itemId, String name, int count, double fromX, double fromY, double fromZ, double toX, double toY,
+		double toZ, Particles.Kind kind, boolean toYou, int tick)
+	{
+		WorldView wv = viewOf(client.getLocalPlayer());
+		int plane = wv.getPlane();
+		overlay.setView(wv.getId(), plane);
+		props.setView(wv.getId());
+		double now = seconds();
+		if (tossTick != tick)
+		{
+			tossTick = tick;
+			tossCount = 0;
+		}
+		for (int i = 0; i < Math.min(count, 3) && tossCount < 3; i++, tossCount++)
+		{
+			double start = now + tossCount * 0.08;
+			Props.Prop p = props.launch(props.itemModel(itemId, 110, 0), Props.Group.FLOATING, plane, fromX, fromY, fromZ, toX, toY,
+				toZ, 60, 0.45, false, 0, start);
+			if (p != null)
+			{
+				p.spinPerSecond = 400;
+				p.expires = start + 0.5;
+				Props.resize(p, itemId, 110, toYou ? 0.1 : 0, toYou ? 0.15 : 0.1);
+			}
+		}
+		double bx = toYou ? fromX : toX;
+		double by = toYou ? fromY : toY;
+		overlay.getParticles().burst(kind, bx, by, 60, 6, config.amount().getScale());
+		if (config.itemPops())
+		{
+			overlay.addPop(new EffectsOverlay.Pop(itemId, (toYou ? "+" : "-") + Math.max(1, count) + " " + name, bx, by, plane,
+				now));
+		}
+	}
+
+	/**
+	 * WHAT: Plays a pay-dirt hand-in in front of you, for the panel's preview button.
+	 * WHY: So you can see the minigame effects without walking to a hopper.
+	 * PRE: Any thread.
+	 * POST: The effect plays on the client thread when logged in.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void previewDeposit()
+	{
+		clientThread.invokeLater(() ->
+		{
+			Player player = client.getLocalPlayer();
+			if (client.getGameState() != GameState.LOGGED_IN || player == null || props == null || !config.enabled())
+			{
+				return;
+			}
+			LocalPoint at = player.getLocalLocation();
+			double[] face = facing();
+			toss(ItemID.PAYDIRT, "Pay-dirt", 1, at.getX(), at.getY(), 80, at.getX() + face[0] * TILE, at.getY() + face[1] * TILE,
+				40, Particles.Kind.DUST, false, client.getTickCount());
+		});
 	}
 
 	/**

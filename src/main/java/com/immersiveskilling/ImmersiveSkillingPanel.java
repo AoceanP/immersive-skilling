@@ -191,6 +191,10 @@ class ImmersiveSkillingPanel extends PluginPanel
 			row("Salvage haul", "salvageHaul", config::salvageHaul),
 			row("Spray", "seaSpray", config::seaSpray),
 			row("Cargo delivery", "cargoFlight", config::cargoFlight)));
+		stack.add(fold("Minigames", "Hopper, belt, crates, sack",
+			row("Hand-ins", "depositFlight", config::depositFlight),
+			row("Sack haul", "sackHaul", config::sackHaul),
+			button("Preview at your feet", "Plays a pay-dirt hand-in where you stand", plugin::previewDeposit)));
 
 		stack.add(rareCard());
 
