@@ -157,6 +157,10 @@ class ImmersiveSkillingPanel extends PluginPanel
 		stack.add(skillCard("Firemaking", "The log lands on the fire", Activity.FIREMAKING,
 			row("Log into the fire", "tossedLog", config::tossedLog),
 			row("Embers", "fireEmbers", config::fireEmbers)));
+		stack.add(skillCard("Cooking", "Steam, sizzle and cooked food", Activity.COOKING,
+			row("Steam and sizzle", "cookSteam", config::cookSteam),
+			row("Cooked food", "cookedItem", config::cookedItem),
+			row("Burnt smoke", "burntSmoke", config::burntSmoke)));
 		stack.add(skillCard("Runecraft", "Runes burst out of the altar", Activity.RUNECRAFT,
 			row("Rune burst", "runeBurst", config::runeBurst),
 			row("Glints", "runeGlints", config::runeGlints)));

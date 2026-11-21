@@ -44,7 +44,7 @@ import java.util.Map;
 final class RareLog
 {
 	/** Skills that can have a rare moment (Smelting counts as Smithing, Alching as Magic). */
-	static final int SKILLS = 17;
+	static final int SKILLS = 18;
 	/** How many of the latest rare moments are kept. */
 	static final int RECENT = 5;
 

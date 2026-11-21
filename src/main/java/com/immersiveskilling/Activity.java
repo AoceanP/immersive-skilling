@@ -55,7 +55,8 @@ enum Activity
 	HUNTER("Hunter"),
 	AGILITY("Agility"),
 	CONSTRUCTION("Construction"),
-	SAILING("Sailing");
+	SAILING("Sailing"),
+	COOKING("Cooking");
 
 	/** Fish that don't start with "raw": eels, minnows and the aerial fishing catches. */
 	private static final java.util.Set<String> OTHER_CATCHES = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -142,6 +143,9 @@ enum Activity
 				return FARMING;
 			case HUNTER:
 				return HUNTER;
+			case COOKING:
+				// Fish, meat, pies, pizzas, wine: whatever you cooked or made.
+				return isBurnt(itemName) ? null : COOKING;
 			default:
 				return null;
 		}
@@ -264,6 +268,19 @@ enum Activity
 		}
 		String name = itemName.toLowerCase(Locale.ROOT);
 		return name.endsWith(" ore") || name.equals("coal") || name.equals("golden nugget") || name.startsWith("uncut ");
+	}
+
+	/**
+	 * WHAT: Whether an item is burnt food.
+	 * WHY: Burning food gives no XP, so it's told apart by its name, beside a range or fire.
+	 * PRE: itemName may be null.
+	 * POST: Nothing changes.
+	 * RETURN: true for "Burnt ..." items
+	 * THROWS: Nothing.
+	 */
+	static boolean isBurnt(String itemName)
+	{
+		return itemName != null && itemName.toLowerCase(Locale.ROOT).startsWith("burnt ");
 	}
 
 	/**

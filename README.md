@@ -13,6 +13,7 @@ Purely visual effects that make skilling feel alive. Everything is drawn on your
 | **Smithing** | The item you make appears on the anvil red-hot, sparks fly, and it cools to its normal colour. |
 | **Fletching** | The item you make rises in front of you and turns, while shavings drift down. |
 | **Firemaking** | Each log arcs onto the fire (or the brazier or campfire) and embers rise. |
+| **Cooking** (off by default) | Your food sizzles on the range or fire and steam rises, then the cooked food lifts off and flies to you. Burnt food gives a puff of dark smoke. |
 | **Runecraft** | Your new runes burst up out of the altar and scatter, with glints. |
 | **Thieving** | What you steal flies from the pocket or stall to you, with glints. |
 | **Herblore** | The potion or clean herb appears in front of you. Potions bubble; herbs shed a few leaves. |
@@ -58,7 +59,7 @@ Off by default. Turn it on and levelling up adds golden light, sparkles and your
 
 Effects still play with a log basket, fish barrel or bag open: the plugin replays the last item that skill gave you. They also work on a Sailing boat, where props sit on the deck and sail with you. Motherlode pay-dirt, amethyst, Camdozaal shards, infernal eels, minnows and aerial fishing catches are all recognised.
 
-Cooking is left to the Immersive Cooking plugin.
+Cooking effects are off by default, so they don't double up with the Immersive Cooking plugin. If you don't use it, turn them on in the Cooking section.
 
 ## Sidebar panel
 

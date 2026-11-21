@@ -334,6 +334,18 @@ class EffectsOverlay extends Overlay
 				g.fill(new Ellipse2D.Double(x - r, y - r, r * 2, r * 2));
 				break;
 			}
+			case STEAM:
+			case SMOKE:
+			{
+				// Puffs that swell as they rise: white steam, or dark smoke.
+				boolean smoke = p.kind == Particles.Kind.SMOKE;
+				double r = p.size * (0.5 + life * (smoke ? 1.5 : 1.2));
+				Color c = smoke ? new Color(50, 46, 44, (int) (150 * alpha)) : new Color(245, 248, 255, (int) (80 * alpha));
+				g.setPaint(new RadialGradientPaint(new Point2D.Double(x, y), (float) r, new float[]{0f, 1f},
+					new Color[]{c, new Color(c.getRed(), c.getGreen(), c.getBlue(), 0)}));
+				g.fill(new Ellipse2D.Double(x - r, y - r, r * 2, r * 2));
+				break;
+			}
 			case DROPLET:
 				g.setColor(new Color(205, 232, 255, (int) (210 * alpha)));
 				g.fill(new Ellipse2D.Double(x - 1.2, y - 1.2, 2.4, 2.4));

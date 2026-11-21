@@ -86,7 +86,7 @@ public class ImmersiveSkillingTest
 	public void fletchingAndUnrelatedSkills()
 	{
 		assertEquals(Activity.FLETCHING, Activity.classify(Skill.FLETCHING, "Yew longbow (u)", false, false));
-		assertNull(Activity.classify(Skill.COOKING, "Lobster", false, false));
+		assertNull(Activity.classify(Skill.SLAYER, "Lobster", false, false));
 		assertNull(Activity.classify(null, "Yew logs", false, false));
 		assertNull(Activity.classify(Skill.WOODCUTTING, null, false, false));
 	}
@@ -184,18 +184,18 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
-	public void onlyTheSeventeenSkillsAreWatched()
+	public void onlyTheEighteenSkillsAreWatched()
 	{
 		int shown = 0;
 		for (Skill s : Skill.values())
 		{
 			shown += ImmersiveSkillingPlugin.isShown(s) ? 1 : 0;
 		}
-		// Cooking is left to Immersive Cooking; combat skills are never touched.
-		assertEquals(17, shown);
+		// Combat skills are never touched.
+		assertEquals(18, shown);
+		assertTrue("Cooking joined in 1.5.0", ImmersiveSkillingPlugin.isShown(Skill.COOKING));
 		assertTrue("Sailing joined in 1.4.0", ImmersiveSkillingPlugin.isShown(Skill.SAILING));
 		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.ATTACK) || ImmersiveSkillingPlugin.isShown(Skill.SLAYER));
-		assertFalse(ImmersiveSkillingPlugin.isShown(Skill.COOKING));
 	}
 
 	// ---- Motion ---------------------------------------------------------------------------------
@@ -826,5 +826,22 @@ public class ImmersiveSkillingTest
 		assertNull("Fishing spots are found another way", ImmersiveSkillingPlugin.actionsFor(Activity.FISHING));
 		assertEquals("Phren bark", Activity.WOODCUTTING, Activity.classify(Skill.WOODCUTTING, "Phren bark", false, false));
 		assertEquals(Activity.MINING, Activity.classify(Skill.MINING, "Corrupted ore", false, false));
+	}
+
+	@Test
+	public void cookingShowsWhatYouCookedButNotWhatBurnt()
+	{
+		assertEquals(Activity.COOKING, Activity.classify(Skill.COOKING, "Shark", false, false));
+		assertEquals(Activity.COOKING, Activity.classify(Skill.COOKING, "Jug of wine", false, false));
+		assertNull("Burnt food gives no XP and is shown as smoke instead",
+			Activity.classify(Skill.COOKING, "Burnt shark", false, false));
+		assertTrue(Activity.isBurnt("Burnt shark"));
+		assertFalse(Activity.isBurnt("Shark"));
+		assertFalse(Activity.isBurnt(null));
+		assertTrue("Cooking waits for the tick's gear swaps", ImmersiveSkillingPlugin.takesAnyItem(Skill.COOKING));
+		assertEquals("+1 Shark", ImmersiveSkillingPlugin.popText(Activity.COOKING, 1, "Shark"));
+		ImmersiveSkillingConfig config = new ImmersiveSkillingConfig() { };
+		assertFalse("Cooking is off by default so it never doubles up with other cooking plugins",
+			config.cookSteam() || config.cookedItem() || config.burntSmoke());
 	}
 }

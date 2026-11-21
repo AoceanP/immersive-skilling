@@ -47,7 +47,7 @@ final class Particles
 
 	enum Kind
 	{
-		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING, BUBBLE, GLINT, LEAF, MOTE, MAGIC, SOIL, STONE, FALLING_LEAF, RIPPLE, GLOW
+		CHIP, SPARK, DUST, DROPLET, EMBER, SHAVING, BUBBLE, GLINT, LEAF, MOTE, MAGIC, SOIL, STONE, FALLING_LEAF, RIPPLE, GLOW, STEAM, SMOKE
 	}
 
 	static final class Particle
@@ -280,6 +280,22 @@ final class Particles
 					gravity = 620;
 					life = 0.7 + random.nextDouble() * 0.3;
 					size = 2.5f;
+					break;
+				case STEAM:
+					// Soft white puffs rising off hot food.
+					speed = 6 + random.nextDouble() * 10;
+					up = 45 + random.nextDouble() * 35;
+					gravity = 0;
+					life = 1.0 + random.nextDouble() * 0.6;
+					size = 7f;
+					break;
+				case SMOKE:
+					// Dark, slow and spreading: burnt food.
+					speed = 8 + random.nextDouble() * 12;
+					up = 35 + random.nextDouble() * 30;
+					gravity = 0;
+					life = 1.5 + random.nextDouble() * 0.8;
+					size = 10f;
 					break;
 				default:
 					speed = 20 + random.nextDouble() * 30;

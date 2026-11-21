@@ -211,13 +211,16 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Sailing", description = "Salvage hauled onto your deck, sorted finds and cargo deliveries", position = 16)
 	String sailingSection = "sailing";
 
-	@ConfigSection(name = "Minigames", description = "Motherlode hopper and sack, Blast Furnace belt, Tempoross crates", position = 17)
+	@ConfigSection(name = "Cooking", description = "Off by default, so it doesn't double up with other cooking plugins. Steam off the range, cooked food lifting off, smoke when it burns", position = 17)
+	String cookingSection = "cooking";
+
+	@ConfigSection(name = "Minigames", description = "Motherlode hopper and sack, Blast Furnace belt, Tempoross crates", position = 18)
 	String minigameSection = "minigames";
 
-	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 18)
+	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 19)
 	String rareSection = "rare";
 
-	@ConfigSection(name = "General", description = "Shared options", position = 19)
+	@ConfigSection(name = "General", description = "Shared options", position = 20)
 	String generalSection = "general";
 
 	@ConfigItem(keyName = "enabled", name = "Effects on", description = "Turn every effect on or off at once", position = 0)
@@ -502,13 +505,31 @@ public interface ImmersiveSkillingConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 43)
+	@ConfigItem(keyName = "cookSteam", name = "Steam and sizzle", description = "Steam rises and the range or fire flares as your food cooks", section = cookingSection, position = 43)
+	default boolean cookSteam()
+	{
+		return false;
+	}
+
+	@ConfigItem(keyName = "cookedItem", name = "Cooked food", description = "The cooked food lifts off the range, steams for a moment and flies to you", section = cookingSection, position = 44)
+	default boolean cookedItem()
+	{
+		return false;
+	}
+
+	@ConfigItem(keyName = "burntSmoke", name = "Burnt smoke", description = "A puff of dark smoke when food burns", section = cookingSection, position = 45)
+	default boolean burntSmoke()
+	{
+		return false;
+	}
+
+	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 46)
 	default boolean rareMoments()
 	{
 		return true;
 	}
 
-	@ConfigItem(keyName = "rareChance", name = "How rare", description = "The chance of a rare moment for each item or action", section = rareSection, position = 44)
+	@ConfigItem(keyName = "rareChance", name = "How rare", description = "The chance of a rare moment for each item or action", section = rareSection, position = 47)
 	default RareChance rareChance()
 	{
 		return RareChance.ONE_IN_512;

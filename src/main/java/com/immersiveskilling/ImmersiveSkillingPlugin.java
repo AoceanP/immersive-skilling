@@ -97,7 +97,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.4.2";
+	static final String VERSION = "1.5.0";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -416,6 +416,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 			if (gained > 0)
 			{
 				sackHaul(e.getKey(), gained, tick);
+				burnt(e.getKey(), gained);
 				pending.add(new Gain(e.getKey(), gained, tick, lost, false));
 				anyGained = true;
 			}
@@ -669,6 +670,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 				return anvil;
 			case FIREMAKING:
 				return findObject("fire", "brazier");
+			case COOKING:
+				return findRange();
 			case RUNECRAFT:
 			case PRAYER:
 				// Bones go onto the altar beside you; with none, they're buried.
@@ -730,7 +733,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 		for (Map.Entry<Skill, Integer> e : xpTick.entrySet())
 		{
 			int gap = Math.abs(e.getValue() - tick);
-			if (gap <= MATCH_TICKS && gap < bestGap && isShown(e.getKey()))
+			// Cooking is off by default; while it is, Cooking XP is ignored entirely.
+			boolean on = e.getKey() != Skill.COOKING || cookingOn();
+			if (gap <= MATCH_TICKS && gap < bestGap && isShown(e.getKey()) && on)
 			{
 				best = e.getKey();
 				bestGap = gap;
@@ -753,7 +758,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 	static boolean takesAnyItem(Skill skill)
 	{
 		return skill == Skill.FLETCHING || skill == Skill.THIEVING || skill == Skill.HERBLORE || skill == Skill.CRAFTING
-			|| skill == Skill.FARMING || skill == Skill.HUNTER || skill == Skill.SAILING;
+			|| skill == Skill.FARMING || skill == Skill.HUNTER || skill == Skill.SAILING || skill == Skill.COOKING;
 	}
 
 	/**
@@ -798,7 +803,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 			|| skill == Skill.FLETCHING || skill == Skill.FIREMAKING || skill == Skill.RUNECRAFT || skill == Skill.THIEVING
 			|| skill == Skill.HERBLORE || skill == Skill.CRAFTING || skill == Skill.PRAYER || skill == Skill.MAGIC
 			|| skill == Skill.FARMING || skill == Skill.HUNTER || skill == Skill.AGILITY || skill == Skill.CONSTRUCTION
-			|| skill == Skill.SAILING;
+			|| skill == Skill.SAILING || skill == Skill.COOKING;
 	}
 
 	/**
@@ -1044,6 +1049,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 				break;
 			case FIREMAKING:
 				firemake(itemId, station, at, fx, fy, plane, now, amount);
+				break;
+			case COOKING:
+				cook(itemId, station, at, fx, fy, plane, now, amount);
 				break;
 			case RUNECRAFT:
 				runecraft(itemId, quantity, station, tx, ty, plane, now, amount);
@@ -2004,6 +2012,114 @@ public class ImmersiveSkillingPlugin extends Plugin
 	}
 
 	/**
+	 * WHAT: Whether any Cooking effect is turned on.
+	 * WHY: Cooking is off by default so it doesn't double up with other cooking plugins; with
+	 * every switch off it plays nothing at all, not even a pop or a rare moment.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: true if steam, cooked food or burnt smoke is on
+	 * THROWS: Nothing.
+	 */
+	private boolean cookingOn()
+	{
+		return config.cookSteam() || config.cookedItem() || config.burntSmoke();
+	}
+
+	/**
+	 * WHAT: The range, fire, stove or oven within three tiles.
+	 * WHY: Food is cooked on it, so steam and the cooked food come from there.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: its location, or null
+	 * THROWS: Nothing.
+	 */
+	private LocalPoint findRange()
+	{
+		return findObject("range", "fire", "stove", "oven");
+	}
+
+	/**
+	 * WHAT: Cooking: the food sizzles on the range or fire, steam rises, and the cooked food lifts
+	 * off and flies to you (or onto a pile with "Piles for made items"). Mixing a pie or pizza with
+	 * no range nearby plays in front of you.
+	 * WHY: Cooking was the biggest skill with nothing to see.
+	 * PRE: Client thread. range is the range or fire nearby, or null.
+	 * POST: Props and particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void cook(int itemId, LocalPoint range, LocalPoint at, double fx, double fy, int plane, double now, double amount)
+	{
+		double x = range != null ? range.getX() : at.getX() + fx * 80;
+		double y = range != null ? range.getY() : at.getY() + fy * 80;
+		double top = range != null ? 60 : 50;
+		Particles particles = overlay.getParticles();
+		if (config.cookSteam())
+		{
+			particles.burst(Particles.Kind.STEAM, x, y, top, 8, amount);
+			if (range != null)
+			{
+				// The sizzle: a flare of heat and a few embers off the pan.
+				particles.burst(Particles.Kind.EMBER, x, y, top - 10, 4, amount);
+				particles.single(Particles.Kind.GLOW, x, y, top - 10, 0xFF9A3C, 70, 0.5);
+			}
+		}
+		targetX = x;
+		targetY = y;
+		if (config.productionPiles())
+		{
+			addToPile(Activity.COOKING, itemId, at, fx, fy, plane, x, y, range != null ? range.getX() : 0,
+				range != null ? range.getY() : 0, range != null ? 1 : 0, top, 40, now);
+			return;
+		}
+		if (!config.cookedItem())
+		{
+			return;
+		}
+		Props.Prop food = props.launch(props.itemModel(itemId, 120, 0), Props.Group.FLOATING, plane, x, y, top, x, y, top + 35, 0,
+			0.45, false, 0, now);
+		if (food != null)
+		{
+			food.spinPerSecond = 300;
+			food.spinSettle = 0.4;
+			// It steams for a moment, then you take it.
+			Props.then(food, now + 1.0, at.getX(), at.getY(), 80, 35, 0.4);
+			food.expires = now + 1.4;
+			Props.resize(food, itemId, 120, 0.15, 0.2);
+		}
+	}
+
+	/**
+	 * WHAT: Burnt food: a puff of dark smoke off the range or fire.
+	 * WHY: Burning gives no XP, so it's caught by the burnt item arriving beside a range.
+	 * PRE: Client thread. count is how many arrived.
+	 * POST: Particles and a pop may be added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void burnt(int itemId, int count)
+	{
+		if (!config.enabled() || paused || props == null || !config.burntSmoke())
+		{
+			return;
+		}
+		String name = client.getItemDefinition(itemId).getName();
+		LocalPoint range = Activity.isBurnt(name) ? findRange() : null;
+		if (range == null)
+		{
+			return;
+		}
+		WorldView wv = viewOf(client.getLocalPlayer());
+		overlay.setView(wv.getId(), wv.getPlane());
+		overlay.getParticles().burst(Particles.Kind.SMOKE, range.getX(), range.getY(), 60, 10, config.amount().getScale());
+		if (config.itemPops())
+		{
+			overlay.addPop(new EffectsOverlay.Pop(itemId, "+" + Math.max(1, count) + " " + name, range.getX(), range.getY(),
+				wv.getPlane(), seconds()));
+		}
+	}
+
+	/**
 	 * WHAT: Firemaking: the log arcs onto the fire and embers rise.
 	 * WHY: Lighting a fire was the one gathering-style skill with nothing to see.
 	 * PRE: Client thread. fire is the fire or brazier nearby, or null.
@@ -2593,6 +2709,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 				p.burst(Particles.Kind.SPARK, x, y, 70, 36, amount);
 				p.burst(Particles.Kind.EMBER, x, y, 60, 14, amount);
 				break;
+			case COOKING:
+				p.burst(Particles.Kind.STEAM, x, y, 60, 16, amount);
+				p.single(Particles.Kind.GLOW, x, y, 70, 0xFFB050, 200, 1.4);
+				break;
 			case FIREMAKING:
 				p.burst(Particles.Kind.EMBER, x, y, 50, 40, amount);
 				p.single(Particles.Kind.GLOW, x, y, 80, 0xFF8A2A, 240, 1.6);
@@ -2886,6 +3006,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 					break;
 				case SAILING:
 					play(activity, ItemID.SAILING_SMALL_SHIPWRECK_SALVAGE, "Small salvage", Collections.emptyList(), null, 1);
+					break;
+				case COOKING:
+					play(activity, ItemID.SHARK, "Shark", Collections.emptyList(), null, 1);
 					break;
 				default:
 					play(activity, ItemID.UNSTRUNG_YEW_LONGBOW, "Yew longbow (u)", Collections.emptyList(), null, 1);
