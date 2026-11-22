@@ -19,7 +19,7 @@ Purely visual effects that make skilling feel alive. Everything is drawn on your
 | **Herblore** | The potion or clean herb appears in front of you. Potions bubble; herbs shed a few leaves. |
 | **Crafting** | What you make rises in front of you. Gems and jewellery glint; leather and pottery give a puff of dust. |
 | **Prayer** | Each bone arcs onto the altar, or sinks into the ground when you bury it, and soft light rises. |
-| **Magic** | High alching: the item vanishes above you in a green flash and coins burst out around you. |
+| **Magic** | High alching: the item vanishes above you in a green flash and coins burst out around you. Enchanting bolts and jewellery flashes in the gem's colour, Superheat melts ore into a red-hot bar, Plank Make turns logs into a plank with shavings, and String Jewellery strings the amulet in a soft glow. |
 | **Farming** | Your harvest pops out of the patch onto a pile beside you, with clumps of soil. |
 | **Hunter** | A puff where the catch came from, and it flies from the trap or net to you. |
 | **Agility** | A puff of dust where you land after each obstacle, and the XP rises over you. |

@@ -176,9 +176,15 @@ class ImmersiveSkillingPanel extends PluginPanel
 		stack.add(skillCard("Prayer", "Bones on the altar, rising light", Activity.PRAYER,
 			row("Bone offering", "offeredBone", config::offeredBone),
 			row("Rising light", "prayerLight", config::prayerLight)));
-		stack.add(skillCard("Magic", "Alching: flash and coins", Activity.ALCHING,
+		stack.add(skillCard("Magic", "Alching, enchants and more", Activity.ALCHING,
 			row("Green flash", "alchFlash", config::alchFlash),
-			row("Coin shower", "alchCoins", config::alchCoins)));
+			row("Coin shower", "alchCoins", config::alchCoins),
+			row("Enchanting", "enchantGlow", config::enchantGlow),
+			row("Superheat", "superheatMelt", config::superheatMelt),
+			row("Plank Make", "plankMake", config::plankMake),
+			row("String Jewellery", "stringJewellery", config::stringJewellery),
+			button("Preview a spell", "Plays Superheat, Plank Make, enchanted bolts, an enchanted ring and String Jewellery in turn",
+				() -> plugin.preview(Activity.SPELLCASTING))));
 		stack.add(skillCard("Farming", "Harvests pile up beside you", Activity.FARMING,
 			row("Harvest pile", "harvestPile", config::harvestPile),
 			row("Soil", "soilPuffs", config::soilPuffs)));

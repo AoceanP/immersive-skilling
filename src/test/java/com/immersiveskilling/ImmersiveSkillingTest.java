@@ -140,6 +140,29 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void itemChangingSpellsAreToldApartByWhatWentIn()
+	{
+		assertEquals("superheat", Activity.spell("Steel bar", Arrays.asList("Iron ore", "Coal", "Nature rune")));
+		assertEquals("plank", Activity.spell("Oak plank", Arrays.asList("Oak logs", "Astral rune", "Nature rune")));
+		assertEquals("plank", Activity.spell("Plank", Arrays.asList("Logs", "Astral rune")));
+		assertEquals("bolts", Activity.spell("Ruby bolts (e)", Arrays.asList("Ruby bolts", "Cosmic rune", "Blood rune")));
+		assertEquals("enchant", Activity.spell("Ring of recoil", Arrays.asList("Sapphire ring", "Cosmic rune")));
+		assertEquals("enchant", Activity.spell("Games necklace(8)", Arrays.asList("Emerald necklace", "Cosmic rune")));
+		assertEquals("string", Activity.spell("Sapphire amulet", Arrays.asList("Sapphire amulet (u)", "Astral rune")));
+		// Alching pays coins, telegrab takes only runes, and a bow string isn't jewellery.
+		assertNull(Activity.spell("Coins", Arrays.asList("Rune platebody", "Nature rune")));
+		assertNull(Activity.spell("Wine of zamorak", Arrays.asList("Law rune", "Air rune")));
+		assertNull(Activity.spell("Leather", Arrays.asList("Bow string")));
+		assertNull(Activity.spell(null, Collections.emptyList()));
+		assertEquals("Magic", Activity.SPELLCASTING.skillName());
+		assertEquals(0xFF3C50, Activity.gemColor("Ruby bolts (e) Ruby bolts"));
+		assertEquals(0x4A78FF, Activity.gemColor("Ring of recoil Sapphire ring"));
+		assertEquals(0x9EC8FF, Activity.gemColor(null));
+		ImmersiveSkillingConfig config = new ImmersiveSkillingConfig() { };
+		assertTrue(config.enchantGlow() && config.superheatMelt() && config.plankMake() && config.stringJewellery());
+	}
+
+	@Test
 	public void agilityAndConstruction()
 	{
 		assertEquals(Activity.CONSTRUCTION, Activity.classifyUsed(Skill.CONSTRUCTION, "Oak plank"));

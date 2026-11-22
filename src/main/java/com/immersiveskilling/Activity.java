@@ -56,7 +56,12 @@ enum Activity
 	AGILITY("Agility"),
 	CONSTRUCTION("Construction"),
 	SAILING("Sailing"),
-	COOKING("Cooking");
+	COOKING("Cooking"),
+	SPELLCASTING("Spellcasting");
+
+	/** Ring, necklace, amulet or bracelet as a whole word, so "Bow string" isn't jewellery. */
+	private static final java.util.regex.Pattern JEWELLERY = java.util.regex.Pattern.compile(
+		".*\\b(ring|necklace|amulet|bracelet)\\b.*");
 
 	/** Fish that don't start with "raw": eels, minnows and the aerial fishing catches. */
 	private static final java.util.Set<String> OTHER_CATCHES = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -79,7 +84,7 @@ enum Activity
 
 	/**
 	 * WHAT: The skill this activity trains, for the rare moments log.
-	 * WHY: Smelting and Smithing are both Smithing; Alching is Magic.
+	 * WHY: Smelting and Smithing are both Smithing; Alching and the other spells are Magic.
 	 * PRE: None.
 	 * POST: Nothing changes.
 	 * RETURN: the skill's name
@@ -87,7 +92,7 @@ enum Activity
 	 */
 	String skillName()
 	{
-		return this == SMELTING ? "Smithing" : this == ALCHING ? "Magic" : displayName;
+		return this == SMELTING ? "Smithing" : this == ALCHING || this == SPELLCASTING ? "Magic" : displayName;
 	}
 
 	/**
@@ -268,6 +273,74 @@ enum Activity
 		}
 		String name = itemName.toLowerCase(Locale.ROOT);
 		return name.endsWith(" ore") || name.equals("coal") || name.equals("golden nugget") || name.startsWith("uncut ");
+	}
+
+	/**
+	 * WHAT: Which item-changing spell was cast: Superheat (ore into a bar), Plank Make (logs into
+	 * a plank), an enchant on bolts or jewellery, or String Jewellery.
+	 * WHY: These all give Magic XP with one item swapped for another, so they're told apart by
+	 * what arrived and what left with it. Alching pays coins and is handled on its own.
+	 * PRE: gained is the name of what arrived; lost holds the names of what left in the same
+	 * change (the item and its runes); either may be null.
+	 * POST: Nothing changes.
+	 * RETURN: "superheat", "plank", "bolts", "string", "enchant", or null for anything else
+	 * THROWS: Nothing.
+	 */
+	static String spell(String gained, java.util.List<String> lost)
+	{
+		if (gained == null || lost == null)
+		{
+			return null;
+		}
+		String name = gained.toLowerCase(Locale.ROOT);
+		if (name.equals("coins"))
+		{
+			return null;
+		}
+		for (String l : lost)
+		{
+			String used = l == null ? "" : l.toLowerCase(Locale.ROOT);
+			if (name.endsWith(" bar") && (used.endsWith(" ore") || used.equals("coal")))
+			{
+				return "superheat";
+			}
+			if (name.contains("plank") && used.contains("logs"))
+			{
+				return "plank";
+			}
+			if (name.endsWith("bolts (e)") && used.endsWith("bolts"))
+			{
+				return "bolts";
+			}
+			if (JEWELLERY.matcher(used).matches() && !used.equals(name))
+			{
+				return used.endsWith(" (u)") ? "string" : "enchant";
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * WHAT: The colour of the gem named in an item, for an enchant's glow.
+	 * WHY: A ruby bolt should flash red and a sapphire ring blue, not every enchant the same.
+	 * PRE: names may be null; it can hold several item names together.
+	 * POST: Nothing changes.
+	 * RETURN: an RGB colour; a pale blue when no gem is named
+	 * THROWS: Nothing.
+	 */
+	static int gemColor(String names)
+	{
+		String n = names == null ? "" : names.toLowerCase(Locale.ROOT);
+		String[] gems = {"sapphire", "emerald", "ruby", "diamond", "dragonstone", "onyx", "zenyte", "opal", "jade", "topaz", "pearl"};
+		int[] colours = {0x4A78FF, 0x3CDC78, 0xFF3C50, 0xDCF0FF, 0xC060FF, 0xB4B4C8, 0xFFB040, 0xF0E0FF, 0x60D080, 0xFF7840, 0xF5F0E6};
+		for (int i = 0; i < gems.length; i++)
+		{
+			if (n.contains(gems[i]))
+			{
+				return colours[i];
+			}
+		}
+		return 0x9EC8FF;
 	}
 
 	/**

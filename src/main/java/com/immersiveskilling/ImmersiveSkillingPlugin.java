@@ -97,7 +97,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.5.0";
+	static final String VERSION = "1.5.1";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -162,6 +162,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 
 	// The last activity, for ambient effects while you keep working.
 	private Activity lastActivity;
+	// Which spell the Magic card's "Preview a spell" button plays next.
+	private int spellDemo;
 	private double lastActivityTime;
 	private double targetX;
 	private double targetY;
@@ -609,8 +611,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 		while (it.hasNext())
 		{
 			Gain gain = it.next();
-			Skill skill = skillNear(gain.tick);
-			if (skill == null || (!endOfTick && takesAnyItem(skill)))
+			// Superheat also gives Smithing XP and String Jewellery Crafting XP, so a spell is
+			// recognised first, whichever skill's XP is nearest.
+			String spell = spellFor(gain);
+			Skill skill = spell != null ? Skill.MAGIC : skillNear(gain.tick);
+			if (skill == null || (!endOfTick && (spell != null || takesAnyItem(skill))))
 			{
 				continue;
 			}
@@ -634,7 +639,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 				}
 				anvil = findObject("anvil");
 			}
-			Activity activity = skill == Skill.SAILING
+			Activity activity = spell != null ? Activity.SPELLCASTING
+				: skill == Skill.SAILING
 				? (Activity.sailing(name, names(gain.lost), gain.used) != null ? Activity.SAILING : null)
 				: gain.used ? Activity.classifyUsed(skill, name)
 				: Activity.classify(skill, name, furnace != null, anvil != null);
@@ -650,6 +656,25 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 			play(activity, gain.itemId, name, gain.lost, station(activity, furnace, anvil), gain.quantity);
 		}
+	}
+
+	/**
+	 * WHAT: Which item-changing spell an arrived item came from, if Magic XP came with it.
+	 * WHY: Superheat, Plank Make, enchants and String Jewellery swap one item for another; see
+	 * Activity.spell.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: the spell's kind, or null when it isn't one
+	 * THROWS: Nothing.
+	 */
+	private String spellFor(Gain gain)
+	{
+		Integer magic = xpTick.get(Skill.MAGIC);
+		if (gain.used || magic == null || Math.abs(magic - gain.tick) > MATCH_TICKS)
+		{
+			return null;
+		}
+		return Activity.spell(client.getItemDefinition(gain.itemId).getName(), names(gain.lost));
 	}
 
 	/**
@@ -1074,6 +1099,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 			case ALCHING:
 				alch(itemId, lost, at, plane, now, amount);
 				break;
+			case SPELLCASTING:
+				cast(itemId, itemName, lost, at, plane, now, amount);
+				break;
 			case FARMING:
 				if (config.soilPuffs())
 				{
@@ -1102,7 +1130,8 @@ public class ImmersiveSkillingPlugin extends Plugin
 		if (config.itemPops())
 		{
 			// Loot is shown over you, where it lands; the rest where it was made.
-			boolean overYou = activity == Activity.THIEVING || activity == Activity.ALCHING || activity == Activity.HUNTER;
+			boolean overYou = activity == Activity.THIEVING || activity == Activity.ALCHING || activity == Activity.HUNTER
+				|| activity == Activity.SPELLCASTING;
 			boolean onPile = lastPile != null && lastPile.activity == activity && lastPile.lastUsed == now;
 			double popX = onPile ? lastPile.x : overYou ? at.getX() : targetX;
 			double popY = onPile ? lastPile.y : overYou ? at.getY() : targetY;
@@ -2522,6 +2551,87 @@ public class ImmersiveSkillingPlugin extends Plugin
 	}
 
 	/**
+	 * WHAT: An item-changing spell: what you cast it on flashes and vanishes above you, and what
+	 * it became appears in its place, then drops into your pack. Superheat ends in embers and a
+	 * red-hot bar that cools, Plank Make in shavings, an enchant in a flash of the gem's colour,
+	 * and String Jewellery in a soft white glow.
+	 * WHY: Enchanting, Superheat and Plank Make are cast thousands of times with nothing to see.
+	 * PRE: Client thread. lost holds what left the inventory, the item and its runes.
+	 * POST: Props and particles are added, if that spell's switch is on.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void cast(int itemId, String itemName, List<Integer> lost, LocalPoint at, int plane, double now, double amount)
+	{
+		double x = at.getX();
+		double y = at.getY();
+		targetX = x;
+		targetY = y;
+		List<String> lostNames = names(lost);
+		String kind = Activity.spell(itemName, lostNames);
+		boolean on = kind != null && (kind.equals("superheat") ? config.superheatMelt()
+			: kind.equals("plank") ? config.plankMake()
+			: kind.equals("string") ? config.stringJewellery()
+			: config.enchantGlow());
+		if (!on)
+		{
+			return;
+		}
+		Particles p = overlay.getParticles();
+		switch (kind)
+		{
+			case "superheat":
+				p.burst(Particles.Kind.EMBER, x, y, 130, 12, amount);
+				p.single(Particles.Kind.GLOW, x, y, 130, 0xFF8C28, 110, 0.6);
+				break;
+			case "plank":
+				p.burst(Particles.Kind.SHAVING, x, y, 130, 8, amount);
+				p.burst(Particles.Kind.DUST, x, y, 130, 4, amount);
+				p.single(Particles.Kind.GLOW, x, y, 130, 0xFFE6B4, 80, 0.4);
+				break;
+			case "string":
+				p.burst(Particles.Kind.MOTE, x, y, 120, 6, amount);
+				p.single(Particles.Kind.GLOW, x, y, 130, 0xF0F0FF, 80, 0.45);
+				break;
+			default:
+				p.burst(Particles.Kind.GLINT, x, y, 130, 12, amount);
+				p.single(Particles.Kind.GLOW, x, y, 130, Activity.gemColor(itemName + " " + String.join(" ", lostNames)), 110, 0.6);
+				break;
+		}
+		// What you cast it on rises and vanishes in the flash.
+		int used = alchedItem(lost);
+		if (used > 0)
+		{
+			Props.Prop before = props.launch(props.itemModel(used, 110, 0), Props.Group.FLOATING, plane, x, y, 110, x, y, 135, 0,
+				0.25, false, 0, now);
+			if (before != null)
+			{
+				// Only the product of a rare moment turns gold.
+				before.golden = false;
+				before.spinPerSecond = 900;
+				before.expires = now + 0.25;
+				Props.resize(before, used, 110, 0, 0.25);
+			}
+		}
+		// What it became grows in where it was, turns once, then drops into your pack.
+		Model[] heat = kind.equals("superheat") ? heatModels(itemId) : null;
+		Props.Prop after = props.launch(heat != null ? heat[Props.HEAT_STEPS] : props.itemModel(itemId, 128, 0),
+			Props.Group.FLOATING, plane, x, y, 140, x, y, 130, 0, 0.6, false, 0, now + 0.2);
+		if (after != null)
+		{
+			after.spinPerSecond = 500;
+			after.spinSettle = 0.6;
+			if (heat != null)
+			{
+				Props.cool(after, heat, now + 0.5, 0.8);
+			}
+			Props.then(after, now + 1.3, x, y, 70, 30, 0.35);
+			after.expires = now + 1.65;
+			Props.resize(after, itemId, 128, 0.25, 0.2);
+		}
+	}
+
+	/**
 	 * WHAT: Which of the items that left was the one alched: the first that isn't a rune.
 	 * WHY: Casting uses up runes in the same tick as the item.
 	 * PRE: Client thread.
@@ -2726,6 +2836,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 				p.burst(Particles.Kind.GLINT, x, y, 120, 20, amount);
 				break;
 			case ALCHING:
+			case SPELLCASTING:
 				p.burst(Particles.Kind.MAGIC, x, y, 140, 30, amount);
 				break;
 			case HERBLORE:
@@ -3009,6 +3120,25 @@ public class ImmersiveSkillingPlugin extends Plugin
 					break;
 				case COOKING:
 					play(activity, ItemID.SHARK, "Shark", Collections.emptyList(), null, 1);
+					break;
+				case SPELLCASTING:
+				{
+					// Each press plays the next spell: Superheat, Plank Make, bolts, a ring, an amulet.
+					int[][] demos = {
+						{ItemID.STEEL_BAR, ItemID.IRON_ORE, ItemID.COAL},
+						{ItemID.PLANK_OAK, ItemID.OAK_LOGS},
+						{ItemID.XBOWS_CROSSBOW_BOLTS_ADAMANTITE_TIPPED_RUBY_ENCHANTED, ItemID.XBOWS_CROSSBOW_BOLTS_ADAMANTITE_TIPPED_RUBY},
+						{ItemID.RING_OF_RECOIL, ItemID.SAPPHIRE_RING},
+						{ItemID.STRUNG_SAPPHIRE_AMULET, ItemID.UNSTRUNG_SAPPHIRE_AMULET}};
+					int[] demo = demos[spellDemo++ % demos.length];
+					List<Integer> used = new ArrayList<>();
+					for (int i = 1; i < demo.length; i++)
+					{
+						used.add(demo[i]);
+					}
+					play(activity, demo[0], client.getItemDefinition(demo[0]).getName(), used, null, demo.length == 3 ? 1 : demo[0]
+						== ItemID.XBOWS_CROSSBOW_BOLTS_ADAMANTITE_TIPPED_RUBY_ENCHANTED ? 10 : 1);
+				}
 					break;
 				default:
 					play(activity, ItemID.UNSTRUNG_YEW_LONGBOW, "Yew longbow (u)", Collections.emptyList(), null, 1);

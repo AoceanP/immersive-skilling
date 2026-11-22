@@ -193,7 +193,7 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Prayer", description = "Bones offered or buried, and rising light", position = 10)
 	String prayerSection = "prayer";
 
-	@ConfigSection(name = "Magic", description = "Alching: a green flash and a shower of coins", position = 11)
+	@ConfigSection(name = "Magic", description = "Alching, enchanting, Superheat, Plank Make and String Jewellery", position = 11)
 	String magicSection = "magic";
 
 	@ConfigSection(name = "Farming", description = "A harvest pile beside you, and soil", position = 12)
@@ -521,6 +521,30 @@ public interface ImmersiveSkillingConfig extends Config
 	default boolean burntSmoke()
 	{
 		return false;
+	}
+
+	@ConfigItem(keyName = "enchantGlow", name = "Enchanting", description = "Bolts and jewellery change in a flash of their gem's colour", section = magicSection, position = 48)
+	default boolean enchantGlow()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "superheatMelt", name = "Superheat", description = "The ore melts in a burst of embers into a red-hot bar that cools", section = magicSection, position = 49)
+	default boolean superheatMelt()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "plankMake", name = "Plank Make", description = "The logs turn into a plank with a puff of shavings", section = magicSection, position = 50)
+	default boolean plankMake()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "stringJewellery", name = "String Jewellery", description = "The amulet is strung in a soft glow of light", section = magicSection, position = 51)
+	default boolean stringJewellery()
+	{
+		return true;
 	}
 
 	@ConfigItem(keyName = "rareMoments", name = "Rare moments", description = "Now and then an item turns gold, with a flourish of light. Just for fun.", section = rareSection, position = 46)
