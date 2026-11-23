@@ -6,9 +6,9 @@ Purely visual effects that make skilling feel alive. Everything is drawn on your
 
 | Skill | Effect |
 |---|---|
-| **Woodcutting** | Each log arcs onto a crisscross pile beside you. Wood chips fly off the tree as you chop. |
+| **Woodcutting** | Each log arcs onto a crisscross pile beside you. Wood chips fly off the tree as you chop, and when the tree falls its stump puffs dust while leaves rain down. |
 | **Fishing** | Each catch flies into a basket beside you, with droplets splashing up from the water. |
-| **Mining** | Ore bounces out of the rock onto a pile beside you, with dust and sparks on each swing. |
+| **Mining** | Ore bounces out of the rock onto a pile beside you, with dust and sparks on each swing. When the rock runs out, it crumbles into stones and dust. |
 | **Smelting** | Your ore flies into the furnace, embers rise, and the bar slides out red-hot, then cools. |
 | **Smithing** | The item you make appears on the anvil red-hot, sparks fly, and it cools to its normal colour. |
 | **Fletching** | The item you make rises in front of you and turns, while shavings drift down. |

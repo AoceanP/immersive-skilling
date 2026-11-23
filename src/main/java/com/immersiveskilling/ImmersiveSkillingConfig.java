@@ -160,13 +160,13 @@ public interface ImmersiveSkillingConfig extends Config
 		}
 	}
 
-	@ConfigSection(name = "Woodcutting", description = "Log pile and wood chips", position = 0)
+	@ConfigSection(name = "Woodcutting", description = "Log pile, wood chips, and a puff of leaves when the tree falls", position = 0)
 	String woodcuttingSection = "woodcutting";
 
 	@ConfigSection(name = "Fishing", description = "Catch basket and splashes", position = 1)
 	String fishingSection = "fishing";
 
-	@ConfigSection(name = "Mining", description = "Ore chunks, dust and sparks", position = 2)
+	@ConfigSection(name = "Mining", description = "Ore chunks, dust and sparks, and the rock crumbling when it runs out", position = 2)
 	String miningSection = "mining";
 
 	@ConfigSection(name = "Smelting and Smithing", description = "Hot bars and items that cool, sparks and embers", position = 3)
@@ -543,6 +543,18 @@ public interface ImmersiveSkillingConfig extends Config
 
 	@ConfigItem(keyName = "stringJewellery", name = "String Jewellery", description = "The amulet is strung in a soft glow of light", section = magicSection, position = 51)
 	default boolean stringJewellery()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "treeFall", name = "Tree falls", description = "When your tree is cut down, the stump puffs dust and leaves rain down", section = woodcuttingSection, position = 52)
+	default boolean treeFall()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "rockCrumble", name = "Rock crumbles", description = "When your rock runs out, it crumbles into stones and dust", section = miningSection, position = 53)
+	default boolean rockCrumble()
 	{
 		return true;
 	}

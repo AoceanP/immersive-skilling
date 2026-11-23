@@ -140,6 +140,19 @@ public class ImmersiveSkillingTest
 	}
 
 	@Test
+	public void aStumpOnTheSameTileIsTheTreeRunningOut()
+	{
+		assertTrue(ImmersiveSkillingPlugin.sameSpot(1000, 2000, 1000, 2000));
+		assertTrue(ImmersiveSkillingPlugin.sameSpot(1000, 2000, 1060, 1940));
+		assertFalse("The next tree over", ImmersiveSkillingPlugin.sameSpot(1000, 2000, 1128, 2000));
+		// A stump has no Chop action and an empty rock no Mine action, so they aren't resources.
+		assertFalse(ImmersiveSkillingPlugin.hasAction(new String[]{null, null, "Examine"}, "chop", "cut"));
+		assertTrue(ImmersiveSkillingPlugin.hasAction(new String[]{"Chop down", null}, "chop", "cut"));
+		ImmersiveSkillingConfig config = new ImmersiveSkillingConfig() { };
+		assertTrue(config.treeFall() && config.rockCrumble());
+	}
+
+	@Test
 	public void itemChangingSpellsAreToldApartByWhatWentIn()
 	{
 		assertEquals("superheat", Activity.spell("Steel bar", Arrays.asList("Iron ore", "Coal", "Nature rune")));

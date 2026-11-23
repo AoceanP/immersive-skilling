@@ -56,6 +56,7 @@ import net.runelite.api.Tile;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.BeforeRender;
+import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
@@ -97,7 +98,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.5.1";
+	static final String VERSION = "1.5.2";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -177,6 +178,9 @@ public class ImmersiveSkillingPlugin extends Plugin
 	private double[] sourceSeen;
 	private LocalPoint sourceStand;
 	private int sourceTick;
+	// The last resource that ran out, {middle x, middle y}, and when, so it only plays once.
+	private double[] depletedAt;
+	private int depletedTick;
 
 	private volatile boolean paused;
 	// Rare moments: the dice, the next preview forced rare, and how many you've seen this session.
@@ -359,6 +363,121 @@ public class ImmersiveSkillingPlugin extends Plugin
 			}
 			match();
 		}
+	}
+
+	/**
+	 * WHAT: Notices the tree or rock you were working on running out: a stump or an empty rock
+	 * appears where it stood.
+	 * WHY: The moment a tree falls or a rock is mined out deserves a beat of its own.
+	 * PRE: Client thread.
+	 * POST: May play a depletion moment.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	@Subscribe
+	public void onGameObjectSpawned(GameObjectSpawned event)
+	{
+		GameObject object = event.getGameObject();
+		double[] seen = sourceSeen;
+		Activity activity = sourceActivity;
+		int tick = client.getTickCount();
+		if (seen == null || object == null || object.getLocalLocation() == null || !config.enabled() || paused
+			|| props == null || tick - sourceTick > SOURCE_TICKS)
+		{
+			return;
+		}
+		boolean on = activity == Activity.WOODCUTTING ? config.treeFall() : activity == Activity.MINING && config.rockCrumble();
+		LocalPoint p = object.getLocalLocation();
+		if (!on || !sameSpot(p.getX(), p.getY(), seen[2], seen[3]))
+		{
+			return;
+		}
+		ObjectComposition def = client.getObjectDefinition(object.getId());
+		if (def != null && def.getImpostorIds() != null)
+		{
+			def = def.getImpostor();
+		}
+		if (def != null && hasAction(def.getActions(), actionsFor(activity)))
+		{
+			// The tree or rock itself (it grew back, or the area loaded again), not a stump.
+			return;
+		}
+		if (depletedAt != null && tick - depletedTick <= 10 && sameSpot(depletedAt[0], depletedAt[1], seen[2], seen[3]))
+		{
+			return;
+		}
+		depletedAt = new double[]{seen[2], seen[3]};
+		depletedTick = tick;
+		deplete(activity, seen[2], seen[3], (int) seen[4]);
+	}
+
+	/**
+	 * WHAT: Whether two points are on the same tile, give or take half a tile.
+	 * WHY: The stump appears at the same middle as the tree it replaces.
+	 * PRE: Points in local units.
+	 * POST: Nothing changes.
+	 * RETURN: true when they're within half a tile on both axes
+	 * THROWS: Nothing.
+	 */
+	static boolean sameSpot(double ax, double ay, double bx, double by)
+	{
+		return Math.abs(ax - bx) <= TILE / 2 && Math.abs(ay - by) <= TILE / 2;
+	}
+
+	/**
+	 * WHAT: A depletion moment: a tree that falls puffs dust from its stump while leaves rain
+	 * down; a rock that runs out crumbles into stones and dust.
+	 * WHY: Without it a tree just swaps for a stump with nothing to mark the end of the job.
+	 * PRE: Client thread. (x, y) is the resource's middle, size its width in tiles (0 or more).
+	 * POST: Particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void deplete(Activity activity, double x, double y, int size)
+	{
+		Particles p = overlay.getParticles();
+		double amount = config.amount().getScale() * Math.max(1, Math.min(2, size));
+		if (activity == Activity.WOODCUTTING)
+		{
+			p.burst(Particles.Kind.DUST, x, y, 20, 14, amount);
+			p.burst(Particles.Kind.CHIP, x, y, 50, 8, amount);
+			p.burst(Particles.Kind.LEAF, x, y, 150, 10, amount);
+			p.burst(Particles.Kind.FALLING_LEAF, x, y, 260, 18, amount);
+			p.single(Particles.Kind.RIPPLE, x, y, 0, 0xB4A078, 150 + 40 * size, 1.1);
+		}
+		else
+		{
+			p.burst(Particles.Kind.STONE, x, y, 50, 16, amount);
+			p.burst(Particles.Kind.DUST, x, y, 40, 14, amount);
+			p.burst(Particles.Kind.DUST, x, y, 70, 6, amount);
+			p.burst(Particles.Kind.SPARK, x, y, 60, 4, amount);
+			p.single(Particles.Kind.RIPPLE, x, y, 0, 0xA0A0A0, 130 + 40 * size, 1.0);
+		}
+	}
+
+	/**
+	 * WHAT: Plays a tree falling or a rock crumbling on the tile in front of you.
+	 * WHY: The panel's preview buttons; waiting for a tree to fall takes a while.
+	 * PRE: Any thread. activity is WOODCUTTING or MINING.
+	 * POST: The moment plays on the client thread when logged in.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void previewDepletion(Activity activity)
+	{
+		clientThread.invokeLater(() ->
+		{
+			Player player = client.getLocalPlayer();
+			if (client.getGameState() != GameState.LOGGED_IN || player == null || player.getLocalLocation() == null)
+			{
+				return;
+			}
+			WorldView wv = viewOf(player);
+			overlay.setView(wv.getId(), wv.getPlane());
+			double[] face = facing();
+			LocalPoint at = player.getLocalLocation();
+			deplete(activity, at.getX() + face[0] * TILE, at.getY() + face[1] * TILE, 1);
+		});
 	}
 
 	@Subscribe

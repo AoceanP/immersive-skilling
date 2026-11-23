@@ -143,13 +143,19 @@ class ImmersiveSkillingPanel extends PluginPanel
 		stack.add(skillCard("Woodcutting", "Log pile and flying wood chips", Activity.WOODCUTTING,
 			row("Log pile", "logPile", config::logPile),
 			row("Wood chips", "woodChips", config::woodChips),
-			segmented("Pile size", "pileSize", ImmersiveSkillingConfig.PileSize.values(), config::pileSize)));
+			row("Tree falls", "treeFall", config::treeFall),
+			segmented("Pile size", "pileSize", ImmersiveSkillingConfig.PileSize.values(), config::pileSize),
+			button("Preview tree falling", "Plays the stump puff and falling leaves in front of you",
+				() -> plugin.previewDepletion(Activity.WOODCUTTING))));
 		stack.add(skillCard("Fishing", "A basket that fills as you fish", Activity.FISHING,
 			row("Catch basket", "catchBasket", config::catchBasket),
 			row("Splashes", "splashes", config::splashes)));
 		stack.add(skillCard("Mining", "Ore chunks, dust and sparks", Activity.MINING,
 			row("Ore chunks", "oreChunks", config::oreChunks),
-			row("Dust and sparks", "dustSparks", config::dustSparks)));
+			row("Dust and sparks", "dustSparks", config::dustSparks),
+			row("Rock crumbles", "rockCrumble", config::rockCrumble),
+			button("Preview rock crumbling", "Plays the rock crumbling into stones and dust in front of you",
+				() -> plugin.previewDepletion(Activity.MINING))));
 		stack.add(metalCard());
 		stack.add(skillCard("Fletching", "The finished item and shavings", Activity.FLETCHING,
 			row("Finished item", "fletchedItem", config::fletchedItem),

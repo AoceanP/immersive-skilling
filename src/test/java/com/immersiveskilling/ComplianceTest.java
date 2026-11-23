@@ -144,14 +144,15 @@ public class ComplianceTest
 			!Pattern.compile("\\bclient\\.\\w+\\(").matcher(panel).find() && !panel.contains("Client ") && !panel.contains("itemManager"));
 		// Every plugin method the panel calls must be safe from the Swing thread.
 		List<String> allowed = Arrays.asList("preview", "clearFromPanel", "setPaused", "isPaused", "getStatus",
-			"getStatusCount", "getStatusCap", "getHint", "previewRare", "getRareCount", "getRareLog", "previewDeposit", "previewLevelUp");
+			"getStatusCount", "getStatusCap", "getHint", "previewRare", "getRareCount", "getRareLog", "previewDeposit", "previewLevelUp",
+			"previewDepletion");
 		Matcher m = Pattern.compile("plugin(?:::|\\.)(\\w+)").matcher(panel);
 		while (m.find())
 		{
 			assertTrue("Panel calls plugin." + m.group(1), allowed.contains(m.group(1)));
 		}
 		String plugin = code(read(SOURCES.resolve("ImmersiveSkillingPlugin.java")));
-		for (String method : new String[]{"void preview(", "void clearFromPanel(", "void previewDeposit(", "void previewLevelUp("})
+		for (String method : new String[]{"void preview(", "void clearFromPanel(", "void previewDeposit(", "void previewLevelUp(", "void previewDepletion("})
 		{
 			int at = plugin.indexOf(method);
 			assertTrue(method, at >= 0);
