@@ -144,7 +144,6 @@ class ImmersiveSkillingPanel extends PluginPanel
 			row("Log pile", "logPile", config::logPile),
 			row("Wood chips", "woodChips", config::woodChips),
 			row("Tree falls", "treeFall", config::treeFall),
-			segmented("Pile size", "pileSize", ImmersiveSkillingConfig.PileSize.values(), config::pileSize),
 			button("Preview tree falling", "Plays the stump puff and falling leaves in front of you",
 				() -> plugin.previewDepletion(Activity.WOODCUTTING))));
 		stack.add(skillCard("Fishing", "A basket that fills as you fish", Activity.FISHING,
@@ -207,21 +206,25 @@ class ImmersiveSkillingPanel extends PluginPanel
 			row("Salvage haul", "salvageHaul", config::salvageHaul),
 			row("Spray", "seaSpray", config::seaSpray),
 			row("Cargo delivery", "cargoFlight", config::cargoFlight)));
-		stack.add(fold("Minigames", "Hopper, belt, crates, sack",
+		stack.add(fold("Minigames", "Hand-ins, sack, Foundry",
 			row("Hand-ins", "depositFlight", config::depositFlight),
 			row("Sack haul", "sackHaul", config::sackHaul),
+			row("Giants' Foundry", "foundryWork", config::foundryWork),
+			button("Preview Foundry", "Plays a trip hammer strike in front of you", plugin::previewFoundry),
 			button("Preview at your feet", "Plays a pay-dirt hand-in where you stand", plugin::previewDeposit)));
 
 		stack.add(rareCard());
 
 		RoundPanel general = card();
 		general.add(bold("General", TEXT));
-		general.add(row("Item pops", "itemPops", config::itemPops));
+		// Pile settings first, together, then the effects themselves.
+		general.add(segmented("Pile size", "pileSize", ImmersiveSkillingConfig.PileSize.values(), config::pileSize));
 		general.add(row("Piles for made items", "productionPiles", config::productionPiles));
-		general.add(segmented("Effect amount", "amount", ImmersiveSkillingConfig.Amount.values(), config::amount));
 		general.add(segmented("Clear piles when", "clearWhen", ImmersiveSkillingConfig.ClearWhen.values(), config::clearWhen));
 		general.add(segmented("Piles fade after", "pileFade", ImmersiveSkillingConfig.PileFade.values(), config::pileFade));
 		general.add(row("Pile count on hover", "pileHover", config::pileHover));
+		general.add(row("Item pops", "itemPops", config::itemPops));
+		general.add(segmented("Effect amount", "amount", ImmersiveSkillingConfig.Amount.values(), config::amount));
 		general.add(row("Level-up moments", "levelUpMoments", config::levelUpMoments));
 		general.add(button("Preview level-up", "Plays a level-up moment where you stand", plugin::previewLevelUp));
 

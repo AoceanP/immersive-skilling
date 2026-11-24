@@ -25,7 +25,7 @@ Purely visual effects that make skilling feel alive. Everything is drawn on your
 | **Agility** | A puff of dust where you land after each obstacle, and the XP rises over you. |
 | **Construction** | The plank flies from you to what you build, in a cloud of sawdust and hammer sparks. |
 | **Sailing** | Salvage swings up from your salvaging hook onto a pile on deck, with spray. At a salvaging station each find bursts out of the salvage to you. Trawled fish come up out of your net, and courier crates swing from you onto the ledger table. |
-| **Minigames** | Pay-dirt drops into the Motherlode hopper and ore flies out of the sack to you. Ore lands on the Blast Furnace belt and bars come hot out of the dispenser. Harpoonfish go into Tempoross crates. At Wintertodt the roots pile up, kindling is whittled and roots land in the brazier. |
+| **Minigames** | Pay-dirt drops into the Motherlode hopper and ore flies out of the sack to you. Ore lands on the Blast Furnace belt and bars come hot out of the dispenser. Harpoonfish go into Tempoross crates. At Wintertodt the roots pile up, kindling is whittled and roots land in the brazier. In Giants' Foundry bars drop into the crucible and the trip hammer, grindstone and polishing wheel throw sparks as you work. In Guardians of the Rift fragments pile up as you mine, runes go into the deposit pool and guardian stones fly to the Great Guardian. |
 
 Each item you get also pops up with how many you got and its name, such as "+15 Arrow shaft". Items that appear grow in with a little overshoot, spin and slow to a stop, then shrink away.
 
@@ -46,6 +46,7 @@ Each account keeps a **rare moments log** in the sidebar: your total, how many s
 - **Each skill piles its own way:** logs in a crisscross firewood stack (4, 3, 2, 1 for a big pile), ore and harvests in a rounded heap, catches nested in a basket that pops into place.
 - **A pile for every resource:** each tree, rock, fishing spot and patch gets its own pile on a free tile right beside it, on the side nearest you. Move between trees and each keeps its own stack (up to four piles at once; a fifth shrinks the oldest away). If the resource can't be found, the pile goes on a free tile beside and behind you, turned to match you.
 - **Never in the way:** never in a wall, a tree or the water. On a boat it sits on your own tile, packed a little closer, so it stays on the deck of any boat, rafts included.
+- **Pick the size:** each pile holds 1 to 10 items (6 by default). The one setting, under General, covers every pile.
 - **Alive:** everything on the pile hops when a new item lands. A full pile still takes your items: they land on top and sink in.
 - **Piles for made items (off by default):** turn it on and fletched, crafted, Herblore, smithed and smelted items land on a pile instead of flying into your pack. Smithed items pile up beside the anvil, bars beside the furnace, and the rest beside you.
 - **Clears gently:** walk away or bank and the pile shrinks away item by item.
@@ -65,7 +66,7 @@ Cooking effects are off by default, so they don't double up with the Immersive C
 
 - **What's showing now**, with how full the pile is, plus **Clear props** and **Pause**.
 - **A card per skill**, folded to one line that shows how many of its effects are on. **Show** opens its switches and a **Preview** button that plays it at your feet.
-- **General options:** item pops, how many particles (Subtle, Normal or Lots), and when piles clear (Walk away, Bank or Logout).
+- **General options:** pile size, item pops, how many particles (Subtle, Normal or Lots), and when piles clear (Walk away, Bank or Logout).
 - **Report bug** and **Suggest** buttons.
 
 Every option is also in RuneLite's normal settings for the plugin.

@@ -48,6 +48,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Model;
+import net.runelite.api.NPC;
 import net.runelite.api.ObjectComposition;
 import net.runelite.api.Player;
 import net.runelite.api.Scene;
@@ -98,7 +99,7 @@ public class ImmersiveSkillingPlugin extends Plugin
 {
 	/** XP and the item it gave can arrive a tick apart; they still count as one action. */
 	/** This release, for bug reports. A test keeps it equal to runelite-plugin.properties. */
-	static final String VERSION = "1.5.2";
+	static final String VERSION = "1.5.3";
 	static final int MATCH_TICKS = 1;
 	/** Unmatched items are forgotten after this many ticks (a bank withdrawal never matches). */
 	static final int PENDING_TICKS = 2;
@@ -360,6 +361,11 @@ public class ImmersiveSkillingPlugin extends Plugin
 			{
 				// Agility gives no item: the XP itself says you cleared an obstacle.
 				agility(xp - before);
+			}
+			if (skill == Skill.SMITHING)
+			{
+				// Giants' Foundry gives Smithing XP for each strike, with no item at all.
+				foundry();
 			}
 			match();
 		}
@@ -627,7 +633,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 			boolean trawling = skill == Skill.FISHING && onBoat() && findObjectWithin(8, "trawling net") != null;
 			// Filling a Tempoross crate gives Fishing XP, but nothing was caught.
 			boolean handedIn = Math.abs(xp - depositTick) <= MATCH_TICKS;
-			if (xp.equals(matchedXp.get(skill)) || handedIn || (player.getAnimation() == -1 && !trawling))
+			// So does harpooning Tempoross or loading its cannon (issue #9); real catches there
+			// still land in your inventory and are matched the normal way.
+			boolean tempoross = skill == Skill.FISHING && atTempoross();
+			if (xp.equals(matchedXp.get(skill)) || handedIn || tempoross || (player.getAnimation() == -1 && !trawling))
 			{
 				continue;
 			}
@@ -2031,7 +2040,10 @@ public class ImmersiveSkillingPlugin extends Plugin
 	{
 		String name = client.getItemDefinition(itemId).getName();
 		String target = Activity.depositTarget(name);
-		LocalPoint into = target == null ? null : findObjectWithin(2, target);
+		// The Great Guardian is a creature, not an object, and a big one. A Tempoross crate sits a
+		// step off the cannon you stand at.
+		LocalPoint into = target == null ? null : target.equals("great guardian") ? findNpcWithin(5, target)
+			: findObjectWithin(target.equals("ammunition crate") ? 3 : 2, target);
 		if (into == null)
 		{
 			return;
@@ -2041,10 +2053,143 @@ public class ImmersiveSkillingPlugin extends Plugin
 		{
 			return;
 		}
-		boolean wet = target.equals("ammunition crate");
+		Particles.Kind kind = target.equals("ammunition crate") ? Particles.Kind.DROPLET
+			: target.equals("crucible") ? Particles.Kind.EMBER
+			: target.equals("deposit pool") || target.equals("great guardian") ? Particles.Kind.GLINT
+			: Particles.Kind.DUST;
 		toss(itemId, name, count, client.getLocalPlayer().getLocalLocation().getX(),
-			client.getLocalPlayer().getLocalLocation().getY(), 80, into.getX(), into.getY(), 60, wet ? Particles.Kind.DROPLET
-				: Particles.Kind.DUST, false, tick);
+			client.getLocalPlayer().getLocalLocation().getY(), 80, into.getX(), into.getY(), 60, kind, false, tick);
+	}
+
+	/**
+	 * WHAT: The nearest creature within reach tiles whose name contains the word.
+	 * WHY: Guardian stones are handed to the Great Guardian, which is a creature, not an object.
+	 * PRE: Client thread. word is lower case.
+	 * POST: Nothing changes.
+	 * RETURN: its location, or null when there isn't one in reach
+	 * THROWS: Nothing.
+	 */
+	private LocalPoint findNpcWithin(int reach, String word)
+	{
+		Player player = client.getLocalPlayer();
+		if (player == null || player.getLocalLocation() == null)
+		{
+			return null;
+		}
+		LocalPoint at = player.getLocalLocation();
+		for (NPC npc : viewOf(player).npcs())
+		{
+			String name = npc == null ? null : npc.getName();
+			LocalPoint l = npc == null ? null : npc.getLocalLocation();
+			if (name != null && l != null && name.toLowerCase(java.util.Locale.ROOT).contains(word)
+				&& Math.abs(l.getSceneX() - at.getSceneX()) <= reach && Math.abs(l.getSceneY() - at.getSceneY()) <= reach)
+			{
+				return l;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * WHAT: Whether you're in the Tempoross fight.
+	 * WHY: There, Fishing XP comes from harpooning Tempoross and filling crates as well as from
+	 * catches, so the fish barrel fallback must not replay your last fish (issue #9).
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: true when Tempoross, a spirit pool or an ammunition crate is near
+	 * THROWS: Nothing.
+	 */
+	private boolean atTempoross()
+	{
+		return findNpcWithin(30, "tempoross") != null || findNpcWithin(30, "spirit pool") != null
+			|| findObjectWithin(15, "ammunition crate") != null;
+	}
+
+	/** The Giants' Foundry stations that give Smithing XP as you work the sword. */
+	private static final String[] FOUNDRY_STATIONS = {"trip hammer", "grindstone", "polishing wheel"};
+
+	/**
+	 * WHAT: Giants' Foundry: when Smithing XP comes in beside the trip hammer, grindstone or
+	 * polishing wheel, that station throws sparks or glints.
+	 * WHY: Working the sword gives XP every few ticks with no item, so nothing used to show.
+	 * PRE: Client thread; called when Smithing XP goes up.
+	 * POST: Particles may be added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void foundry()
+	{
+		if (!config.enabled() || paused || props == null || !config.foundryWork())
+		{
+			return;
+		}
+		for (String station : FOUNDRY_STATIONS)
+		{
+			LocalPoint at = findObjectWithin(2, station);
+			if (at != null)
+			{
+				WorldView wv = viewOf(client.getLocalPlayer());
+				overlay.setView(wv.getId(), wv.getPlane());
+				foundryAt(station, at.getX(), at.getY());
+				return;
+			}
+		}
+	}
+
+	/**
+	 * WHAT: One strike at a Giants' Foundry station: the hammer's sparks and embers, the
+	 * grindstone's spray of sparks, or the polishing wheel's glints.
+	 * WHY: Shared by the real work and the panel's preview.
+	 * PRE: Client thread. station is one of FOUNDRY_STATIONS; (x, y) is where it stands.
+	 * POST: Particles are added.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void foundryAt(String station, double x, double y)
+	{
+		Particles p = overlay.getParticles();
+		double amount = config.amount().getScale();
+		switch (station)
+		{
+			case "trip hammer":
+				p.burst(Particles.Kind.SPARK, x, y, 70, 14, amount);
+				p.burst(Particles.Kind.EMBER, x, y, 70, 4, amount);
+				p.single(Particles.Kind.GLOW, x, y, 75, 0xFFB45A, 70, 0.3);
+				break;
+			case "grindstone":
+				p.burst(Particles.Kind.SPARK, x, y, 55, 18, amount);
+				p.single(Particles.Kind.GLOW, x, y, 55, 0xFFD27A, 50, 0.25);
+				break;
+			default:
+				p.burst(Particles.Kind.GLINT, x, y, 60, 8, amount);
+				p.single(Particles.Kind.GLOW, x, y, 60, 0xF0F5FF, 50, 0.3);
+				break;
+		}
+	}
+
+	/**
+	 * WHAT: Plays a trip hammer strike in front of you, for the panel's preview button.
+	 * WHY: So you can see the Giants' Foundry effect without going there.
+	 * PRE: Any thread.
+	 * POST: The effect plays on the client thread when logged in.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void previewFoundry()
+	{
+		clientThread.invokeLater(() ->
+		{
+			Player player = client.getLocalPlayer();
+			if (client.getGameState() != GameState.LOGGED_IN || player == null || player.getLocalLocation() == null)
+			{
+				return;
+			}
+			WorldView wv = viewOf(player);
+			overlay.setView(wv.getId(), wv.getPlane());
+			double[] face = facing();
+			LocalPoint at = player.getLocalLocation();
+			foundryAt("trip hammer", at.getX() + face[0] * TILE, at.getY() + face[1] * TILE);
+		});
 	}
 
 	/**

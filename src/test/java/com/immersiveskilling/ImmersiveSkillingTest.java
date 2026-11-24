@@ -704,6 +704,15 @@ public class ImmersiveSkillingTest
 			&& c.landingDust() && c.agilityPops() && c.plankFlight() && c.buildDust());
 		assertEquals(ImmersiveSkillingConfig.PileSize.MEDIUM, c.pileSize());
 		assertEquals(6, c.pileSize().getCount());
+		ImmersiveSkillingConfig.PileSize[] sizes = ImmersiveSkillingConfig.PileSize.values();
+		assertEquals("pick any size from 1 to 10 (issue #10)", 10, sizes.length);
+		for (int i = 0; i < sizes.length; i++)
+		{
+			assertEquals(i + 1, sizes[i].getCount());
+			assertEquals(String.valueOf(i + 1), sizes[i].toString());
+		}
+		assertEquals("sizes saved before 1.5.3 still load", 3, ImmersiveSkillingConfig.PileSize.valueOf("SMALL").getCount());
+		assertEquals(10, ImmersiveSkillingConfig.PileSize.valueOf("LARGE").getCount());
 		assertEquals(ImmersiveSkillingConfig.Amount.NORMAL, c.amount());
 		assertEquals(ImmersiveSkillingConfig.ClearWhen.WALK_AWAY, c.clearWhen());
 	}
@@ -808,6 +817,13 @@ public class ImmersiveSkillingTest
 		assertEquals("ammunition crate", Activity.depositTarget("Raw harpoonfish"));
 		assertEquals("ammunition crate", Activity.depositTarget("Harpoonfish"));
 		assertNull("A dropped log isn't a hand-in", Activity.depositTarget("Yew logs"));
+		assertEquals("crucible", Activity.depositTarget("Mithril bar"));
+		assertEquals("deposit pool", Activity.depositTarget("Nature rune"));
+		assertEquals("great guardian", Activity.depositTarget("Catalytic guardian stone"));
+		assertEquals("great guardian", Activity.depositTarget("Polyelemental guardian stone"));
+		assertEquals(Activity.MINING, Activity.classify(Skill.MINING, "Guardian fragments", false, false));
+		assertEquals(Activity.MINING, Activity.classify(Skill.MINING, "Guardian essence", false, false));
+		assertTrue(new ImmersiveSkillingConfig() { }.foundryWork());
 		assertNull(Activity.depositTarget(null));
 	}
 

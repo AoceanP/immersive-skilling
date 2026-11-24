@@ -68,7 +68,7 @@ enum Activity
 		"infernal eel", "sacred eel", "minnow", "bluegill", "common tench", "mottled eel", "greater siren"));
 	/** Mining finds that aren't ore: Motherlode pay-dirt, amethyst and Camdozaal shards. */
 	private static final java.util.Set<String> OTHER_ROCKS = new java.util.HashSet<>(java.util.Arrays.asList(
-		"pay-dirt", "amethyst", "barronite shards", "barronite deposit", "calcified deposit"));
+		"pay-dirt", "amethyst", "barronite shards", "barronite deposit", "calcified deposit", "guardian fragments"));
 
 	private final String displayName;
 
@@ -230,12 +230,14 @@ enum Activity
 
 	/**
 	 * WHAT: What an item is dropped into at a minigame: pay-dirt into the Motherlode hopper, ore
-	 * and coal onto the Blast Furnace conveyor belt, harpoonfish into a Tempoross ammunition crate.
+	 * and coal onto the Blast Furnace conveyor belt, harpoonfish into a Tempoross ammunition crate,
+	 * bars into the Giants' Foundry crucible, runes into the Guardians of the Rift deposit pool and
+	 * guardian stones to the Great Guardian.
 	 * WHY: These hand-ins give no XP (or XP with nothing arriving), so they're told apart by the
 	 * item that left and the object you stand at.
 	 * PRE: itemName may be null.
 	 * POST: Nothing changes.
-	 * RETURN: the object's name in lower case ("hopper", "conveyor belt", "ammunition crate"), or null
+	 * RETURN: the object's (or, for "great guardian", the NPC's) name in lower case, or null
 	 * THROWS: Nothing.
 	 */
 	static String depositTarget(String itemName)
@@ -252,6 +254,18 @@ enum Activity
 		if (name.endsWith(" ore") || name.equals("coal"))
 		{
 			return "conveyor belt";
+		}
+		if (name.endsWith(" bar"))
+		{
+			return "crucible";
+		}
+		if (name.endsWith(" rune"))
+		{
+			return "deposit pool";
+		}
+		if (name.endsWith("guardian stone"))
+		{
+			return "great guardian";
 		}
 		return name.equals("raw harpoonfish") || name.equals("harpoonfish") ? "ammunition crate" : null;
 	}

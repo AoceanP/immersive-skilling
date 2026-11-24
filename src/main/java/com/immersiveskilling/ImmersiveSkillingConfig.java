@@ -44,7 +44,9 @@ public interface ImmersiveSkillingConfig extends Config
 
 	enum PileSize
 	{
-		SMALL("3", 3), MEDIUM("6", 6), LARGE("10", 10);
+		// The old names stay, so a size saved before 1.5.3 (3, 6 or 10) still loads.
+		ONE("1", 1), TWO("2", 2), SMALL("3", 3), FOUR("4", 4), FIVE("5", 5), MEDIUM("6", 6),
+		SEVEN("7", 7), EIGHT("8", 8), NINE("9", 9), LARGE("10", 10);
 
 		private final String label;
 		private final int count;
@@ -214,7 +216,7 @@ public interface ImmersiveSkillingConfig extends Config
 	@ConfigSection(name = "Cooking", description = "Off by default, so it doesn't double up with other cooking plugins. Steam off the range, cooked food lifting off, smoke when it burns", position = 17)
 	String cookingSection = "cooking";
 
-	@ConfigSection(name = "Minigames", description = "Motherlode hopper and sack, Blast Furnace belt, Tempoross crates", position = 18)
+	@ConfigSection(name = "Minigames", description = "Motherlode, Blast Furnace, Tempoross, Giants' Foundry and Guardians of the Rift", position = 18)
 	String minigameSection = "minigames";
 
 	@ConfigSection(name = "Rare moments", description = "Now and then an item turns gold; a log of them, with achievements", position = 19)
@@ -241,7 +243,7 @@ public interface ImmersiveSkillingConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "pileSize", name = "Pile size", description = "The most items a pile holds", section = woodcuttingSection, position = 3)
+	@ConfigItem(keyName = "pileSize", name = "Pile size", description = "The most items a pile holds, for every pile: logs, fish, ore, harvests and made items", section = generalSection, position = 12)
 	default PileSize pileSize()
 	{
 		return PileSize.MEDIUM;
@@ -295,13 +297,13 @@ public interface ImmersiveSkillingConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "itemPops", name = "Item pops", description = "The item rises with how many you got, e.g. \"+15\", each time you get some", section = generalSection, position = 12)
+	@ConfigItem(keyName = "itemPops", name = "Item pops", description = "The item rises with how many you got, e.g. \"+15\", each time you get some", section = generalSection, position = 17)
 	default boolean itemPops()
 	{
 		return true;
 	}
 
-	@ConfigItem(keyName = "amount", name = "Effect amount", description = "How many particles each effect makes", section = generalSection, position = 13)
+	@ConfigItem(keyName = "amount", name = "Effect amount", description = "How many particles each effect makes", section = generalSection, position = 18)
 	default Amount amount()
 	{
 		return Amount.NORMAL;
@@ -313,19 +315,19 @@ public interface ImmersiveSkillingConfig extends Config
 		return ClearWhen.WALK_AWAY;
 	}
 
-	@ConfigItem(keyName = "productionPiles", name = "Piles for made items", description = "Fletched, crafted, Herblore, smithed and smelted items land on a pile beside you (or the anvil or furnace) instead of flying into your pack", section = generalSection, position = 16)
+	@ConfigItem(keyName = "productionPiles", name = "Piles for made items", description = "Fletched, crafted, Herblore, smithed and smelted items land on a pile beside you (or the anvil or furnace) instead of flying into your pack", section = generalSection, position = 13)
 	default boolean productionPiles()
 	{
 		return false;
 	}
 
-	@ConfigItem(keyName = "pileFade", name = "Piles fade after", description = "A pile you haven't added to for this long shrinks away", section = generalSection, position = 17)
+	@ConfigItem(keyName = "pileFade", name = "Piles fade after", description = "A pile you haven't added to for this long shrinks away", section = generalSection, position = 15)
 	default PileFade pileFade()
 	{
 		return PileFade.NEVER;
 	}
 
-	@ConfigItem(keyName = "pileHover", name = "Pile count on hover", description = "Hover a pile to see how many items are on it", section = generalSection, position = 18)
+	@ConfigItem(keyName = "pileHover", name = "Pile count on hover", description = "Hover a pile to see how many items are on it", section = generalSection, position = 16)
 	default boolean pileHover()
 	{
 		return true;
@@ -337,7 +339,7 @@ public interface ImmersiveSkillingConfig extends Config
 		return false;
 	}
 
-	@ConfigItem(keyName = "showPanel", name = "Sidebar panel", description = "Show the Immersive Skilling panel in the sidebar", section = generalSection, position = 15)
+	@ConfigItem(keyName = "showPanel", name = "Sidebar panel", description = "Show the Immersive Skilling panel in the sidebar", section = generalSection, position = 20)
 	default boolean showPanel()
 	{
 		return true;
@@ -493,7 +495,7 @@ public interface ImmersiveSkillingConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(keyName = "depositFlight", name = "Hand-ins", description = "Pay-dirt drops into the hopper, ore onto the Blast Furnace belt, fish into Tempoross crates", section = minigameSection, position = 41)
+	@ConfigItem(keyName = "depositFlight", name = "Hand-ins", description = "Pay-dirt into the hopper, ore onto the Blast Furnace belt, fish into Tempoross crates, bars into the Giants' Foundry crucible, runes into the deposit pool and guardian stones to the Great Guardian", section = minigameSection, position = 41)
 	default boolean depositFlight()
 	{
 		return true;
@@ -555,6 +557,12 @@ public interface ImmersiveSkillingConfig extends Config
 
 	@ConfigItem(keyName = "rockCrumble", name = "Rock crumbles", description = "When your rock runs out, it crumbles into stones and dust", section = miningSection, position = 53)
 	default boolean rockCrumble()
+	{
+		return true;
+	}
+
+	@ConfigItem(keyName = "foundryWork", name = "Giants' Foundry", description = "Sparks fly at the trip hammer and grindstone, and the polishing wheel glints, as you work the sword", section = minigameSection, position = 54)
+	default boolean foundryWork()
 	{
 		return true;
 	}
